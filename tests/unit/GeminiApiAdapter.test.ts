@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { LlmError, describeLlmError } from '../../src/contexts/llm-gateway'
-import { classifyHttpError } from '../../src/contexts/llm-gateway/domain/LlmError'
+import { classifyHttpError, msUntilPacificMidnight } from '../../src/contexts/llm-gateway/domain/LlmError'
 import {
   GEMINI_API_BASE,
   GeminiApiAdapter,
@@ -160,5 +160,106 @@ describe('GeminiApiAdapter.testKey', () => {
       kind: 'bad-request',
       status: 404,
     })
+  })
+})
+
+describe('429 quota parsing', () => {
+  const body = (name: string) => JSON.parse(fixture(name))
+
+  it('per-minute requests: rate-limit with scope, metric, limit, model, retry hint', () => {
+    const e = classifyHttpError(429, body('gemini-429-minute-requests.json'))
+    expect(e.kind).toBe('rate-limit')
+    expect(e.quota).toEqual({ scope: 'minute', metric: 'requests', limit: 10, model: 'gemini-2.5-flash' })
+    expect(e.retryAfterMs).toBe(41_000)
+    expect(e.retryable).toBe(true)
+  })
+
+  it('per-minute input tokens', () => {
+    const e = classifyHttpError(429, body('gemini-429-minute-tokens.json'))
+    expect(e.kind).toBe('rate-limit')
+    expect(e.quota).toMatchObject({ scope: 'minute', metric: 'tokens', limit: 250_000 })
+  })
+
+  it('per-day requests → daily-quota, not retryable', () => {
+    const e = classifyHttpError(429, body('gemini-429-daily.json'))
+    expect(e.kind).toBe('daily-quota')
+    expect(e.quota).toEqual({ scope: 'day', metric: 'requests', limit: 250, model: 'gemini-2.5-flash' })
+    expect(e.retryable).toBe(false)
+  })
+
+  it('falls back to the message when details are missing', () => {
+    const e = classifyHttpError(429, body('gemini-429-message-only.json'))
+    expect(e.kind).toBe('daily-quota')
+    expect(e.quota).toMatchObject({ scope: 'day', limit: 50, model: 'gemini-flash-latest' })
+    expect(e.retryAfterMs).toBe(30_000)
+  })
+})
+
+describe('retry policy for 429', () => {
+  const body = (name: string) => JSON.parse(fixture(name))
+
+  it('daily quota: one request, no waiting', async () => {
+    const sleep = vi.fn(async () => {})
+    const { fetch } = scripted(json(429, body('gemini-429-daily.json')))
+    await expect(new GeminiApiAdapter({ apiKey: 'k', fetch, sleep }).generateJson(REQ)).rejects.toMatchObject({
+      kind: 'daily-quota',
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('a server hint longer than 30 s is surfaced at once, not waited out', async () => {
+    const sleep = vi.fn(async () => {})
+    const { fetch } = scripted(json(429, body('gemini-429-minute-requests.json')))
+    await expect(new GeminiApiAdapter({ apiKey: 'k', fetch, sleep }).generateJson(REQ)).rejects.toMatchObject({
+      kind: 'rate-limit',
+      retryAfterMs: 41_000,
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(sleep).not.toHaveBeenCalled()
+  })
+
+  it('a short hint is waited exactly, then retried', async () => {
+    const sleep = vi.fn(async () => {})
+    const { fetch } = scripted(json(429, body('gemini-429-minute-tokens.json')), json(200, okBody('{"ok":true}')))
+    await expect(new GeminiApiAdapter({ apiKey: 'k', fetch, sleep }).generateJson(REQ)).resolves.toEqual({ ok: true })
+    expect(sleep).toHaveBeenCalledWith(3000, undefined)
+  })
+})
+
+describe('msUntilPacificMidnight', () => {
+  const H = 3_600_000
+
+  it('ordinary day: noon PDT → 12 h', () => {
+    expect(msUntilPacificMidnight(new Date('2026-10-16T19:00:00Z'))).toBe(12 * H)
+  })
+
+  it('spring forward (2026-03-08): 01:00 PST → 22 h, not 23', () => {
+    expect(msUntilPacificMidnight(new Date('2026-03-08T09:00:00Z'))).toBe(22 * H)
+  })
+
+  it('fall back (2026-11-01): right after midnight → 25 h', () => {
+    expect(msUntilPacificMidnight(new Date('2026-11-01T07:00:00Z'))).toBe(25 * H)
+  })
+})
+
+describe('describeLlmError for limits', () => {
+  it('daily: names model, limit and time to reset', () => {
+    const e = classifyHttpError(429, JSON.parse(fixture('gemini-429-daily.json')))
+    const text = describeLlmError(e, new Date('2026-10-16T19:00:00Z'))
+    expect(text).toContain('Daily Gemini quota used up for gemini-2.5-flash (limit 250 requests/day)')
+    expect(text).toContain('in about 12 h 0 min')
+    expect(text).toContain('another model in Settings')
+  })
+
+  it('per-minute: says which axis and how many seconds', () => {
+    const req = classifyHttpError(429, JSON.parse(fixture('gemini-429-minute-requests.json')))
+    expect(describeLlmError(req)).toBe('Gemini rate limit reached (requests per minute). Try again in 41 s.')
+    const tok = classifyHttpError(429, JSON.parse(fixture('gemini-429-minute-tokens.json')))
+    expect(describeLlmError(tok)).toBe('Gemini rate limit reached (tokens per minute). Try again in 3 s.')
+  })
+
+  it('unknown 429 keeps the generic text', () => {
+    expect(describeLlmError(new LlmError('rate-limit', 'x'))).toBe('Gemini rate limit reached. Try again in a minute.')
   })
 })

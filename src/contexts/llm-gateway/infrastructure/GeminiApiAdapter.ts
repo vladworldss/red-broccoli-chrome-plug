@@ -10,6 +10,9 @@ export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta
  */
 export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest'
 
+/** Longest server-requested pause we sit through behind a spinner. */
+const MAX_SILENT_WAIT_MS = 30_000
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 export type GeminiApiAdapterOptions = {
@@ -27,9 +30,13 @@ export type GeminiApiAdapterOptions = {
  *
  * Retry policy:
  *  - 429 / 5xx / network: up to `maxAttempts` total, waiting the server's
- *    RetryInfo delay (capped) or exponential backoff 2s, 4s, 8s, 16s. The
- *    free tier answers 503 "high demand" in bursts that usually clear within
- *    ~30s, so the budget is sized for that; the panel offers Cancel meanwhile.
+ *    RetryInfo delay or exponential backoff 2s, 4s, 8s, 16s. The free tier
+ *    answers 503 "high demand" in bursts that usually clear within ~30s, so
+ *    the budget is sized for that; the panel offers Cancel meanwhile.
+ *  - 429 asking for a wait longer than MAX_SILENT_WAIT_MS: thrown at once, so
+ *    the UI can say "try again in N s" instead of spinning and failing again.
+ *  - daily quota (429 with a PerDay QuotaFailure): never retried — it resets
+ *    at midnight Pacific, so retries would only burn time.
  *  - unparseable/truncated JSON: exactly one more attempt.
  *  - auth / bad request / blocked: never retried — the same request will fail
  *    the same way.
@@ -71,8 +78,9 @@ export class GeminiApiAdapter implements LlmPort {
           continue
         }
         if (!e.retryable || attempt >= this.maxAttempts) throw e
+        if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_SILENT_WAIT_MS) throw e
         const backoff = 2000 * 2 ** (attempt - 1)
-        await this.sleep(Math.min(e.retryAfterMs ?? backoff, 30_000), req.signal).catch(() => {
+        await this.sleep(e.retryAfterMs ?? backoff, req.signal).catch(() => {
           throw new LlmError('aborted', 'Aborted')
         })
       }

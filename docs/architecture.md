@@ -63,6 +63,11 @@ type. The UI maps `Transcript` to lines with `transcriptToLines`.
 | `sh:map:{videoId}:{lang}:{promptVersion}:{model}` | `ConceptMap` |
 | `sh:mapidx:{videoId}` | index of which maps exist, used by `findLatest` |
 
+When a build fails, the panel keeps the map that was on screen. If there was
+none, it shows the cached map for the current version (`findLatest`), then
+any older map of the video (`findLatestAny`, marked "older version"). Old
+maps are kept in the cache until "Clear cache" removes them.
+
 "Clear cache" removes the `sh:transcript:`, `sh:map:` and `sh:mapidx:` keys,
 never `sh:settings`. There is no automatic eviction yet. Storage usage is
 shown in Settings; `unlimitedStorage` gets added only if real usage

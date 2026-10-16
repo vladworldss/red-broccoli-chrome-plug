@@ -15,6 +15,7 @@ import {
   EmptyTranscriptError,
   buildConceptMap,
   loadCachedConceptMap,
+  loadFallbackConceptMap,
   type BuildProgress,
   type ConceptMap,
 } from '../../contexts/concept-mapping'
@@ -43,8 +44,26 @@ export type View =
   | { kind: 'capturing'; video: VideoRef }
   | { kind: 'no-captions'; video: VideoRef; attempts: CaptureAttempt[] }
   | { kind: 'building'; video: VideoRef; progress: BuildProgress | null }
-  | { kind: 'map'; video: VideoRef; map: ConceptMap; fromCache: boolean }
-  | { kind: 'error'; video: VideoRef; message: string; needsKey: boolean }
+  | {
+      kind: 'map'
+      video: VideoRef
+      map: ConceptMap
+      fromCache: boolean
+      /** Set when a (re)build failed and this is the previous map kept on screen. */
+      error?: BuildFailure
+    }
+  | ({ kind: 'error'; video: VideoRef } & BuildFailure)
+
+export type BuildFailure = {
+  message: string
+  /** The one button that fixes it: retry, or Settings (key, or another model). */
+  action: 'retry' | 'settings'
+  /** Where to read more, e.g. the user's quota page for a 429. */
+  help?: { label: string; url: string }
+}
+
+/** AI Studio's per-key view of active limits and usage (linked from Google's rate-limit docs). */
+const RATE_LIMIT_HELP = { label: 'See your limits in AI Studio', url: 'https://aistudio.google.com/rate-limit' }
 
 export function modelOf(settings: Settings): string {
   return settings.model || DEFAULT_GEMINI_MODEL
@@ -62,6 +81,11 @@ export function usePanel() {
   const gen = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const clientRef = useRef<YouTubeTabClient | null>(null)
+  /** The map last shown, so a failed Rebuild can put it straight back. */
+  const shownMap = useRef<ConceptMap | null>(null)
+  useEffect(() => {
+    if (view.kind === 'map') shownMap.current = view.map
+  }, [view])
   const currentTabId = useRef<number | null>(null)
 
   // --- settings ---------------------------------------------------------------
@@ -141,6 +165,31 @@ export function usePanel() {
     [transcriptCache],
   )
 
+  // --- failure ---------------------------------------------------------------------
+  /**
+   * A failed build never blanks out a map the user already had. Fallback order:
+   * the map on screen (Rebuild), the cached map for the current prompt+model,
+   * then any older cached map of this video. Only with none of those does the
+   * bare error card appear.
+   */
+  const fail = useCallback(
+    async (video: VideoRef, failure: BuildFailure, stale: () => boolean) => {
+      const onScreen = shownMap.current?.videoId === video.videoId ? shownMap.current : null
+      const previous =
+        onScreen ??
+        (mapCache
+          ? await loadFallbackConceptMap(video.videoId, { cache: mapCache, model: modelOf(settingsRef.current) })
+          : null)
+      if (stale()) return
+      setView(
+        previous
+          ? { kind: 'map', video, map: previous, fromCache: true, error: failure }
+          : { kind: 'error', video, ...failure },
+      )
+    },
+    [mapCache],
+  )
+
   // --- build ----------------------------------------------------------------------
   const build = useCallback(
     async (video: VideoRef, opts: { force?: boolean; pasted?: string } = {}) => {
@@ -148,7 +197,7 @@ export function usePanel() {
       const stale = () => my !== gen.current
       const s = settingsRef.current
       if (!s.apiKey) {
-        setView({ kind: 'error', video, message: describeLlmError(new LlmError('no-key', '')), needsKey: true })
+        await fail(video, { message: describeLlmError(new LlmError('no-key', '')), action: 'settings' }, stale)
         return
       }
 
@@ -161,7 +210,7 @@ export function usePanel() {
         if (opts.pasted !== undefined) {
           transcript = manualTranscript(video.videoId, opts.pasted)
           if (!transcript) {
-            setView({ kind: 'error', video, message: 'The pasted text is empty.', needsKey: false })
+            await fail(video, { message: 'The pasted text is empty.', action: 'retry' }, stale)
             return
           }
           await transcriptCache?.put(transcript).catch(() => {})
@@ -205,12 +254,12 @@ export function usePanel() {
         setView({ kind: 'map', video, map, fromCache })
       } catch (err) {
         if (stale() || (err instanceof LlmError && err.kind === 'aborted')) return
-        setView({ kind: 'error', video, message: errorText(err), needsKey: err instanceof LlmError && (err.kind === 'auth' || err.kind === 'no-key') })
+        await fail(video, failureOf(err), stale)
       } finally {
         if (abortRef.current === ac) abortRef.current = null
       }
     },
-    [getTranscript, mapCache, transcriptCache],
+    [fail, getTranscript, mapCache, transcriptCache],
   )
 
   const cancel = useCallback(() => {
@@ -224,6 +273,24 @@ export function usePanel() {
   }, [])
 
   return { view, settings, build, cancel, seek, getTranscript, refresh: resolve }
+}
+
+/** Error → what the panel shows: message, the fixing action, a help link for limits. */
+function failureOf(err: unknown): BuildFailure {
+  const message = errorText(err)
+  if (!(err instanceof LlmError)) return { message, action: 'retry' }
+  switch (err.kind) {
+    case 'auth':
+    case 'no-key':
+      return { message, action: 'settings' }
+    case 'daily-quota':
+      // Retrying today is pointless; another model has its own quota.
+      return { message, action: 'settings', help: RATE_LIMIT_HELP }
+    case 'rate-limit':
+      return { message, action: 'retry', help: RATE_LIMIT_HELP }
+    default:
+      return { message, action: 'retry' }
+  }
 }
 
 function errorText(err: unknown): string {

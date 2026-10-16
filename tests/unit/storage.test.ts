@@ -83,6 +83,18 @@ describe('ChromeConceptMapCache', () => {
     expect(await cache.findLatest('AAAAAAAAAAA', 'p1', 'gemini-flash-latest')).toBeNull()
   })
 
+  it('findLatestAny ignores prompt version and model; skips index entries whose map is gone', async () => {
+    const s = fakeChromeStorage()
+    const cache = new ChromeConceptMapCache(s)
+    await cache.put(conceptMap({ model: 'old-model', promptVersion: 'p0', createdAt: '2026-10-16T09:00:00Z' }))
+    await cache.put(conceptMap({ model: 'other', createdAt: '2026-10-16T12:00:00Z' }))
+    expect((await cache.findLatestAny(VID))?.model).toBe('other')
+
+    delete s.data[mapKey({ videoId: VID, lang: 'en', promptVersion: 'p1', model: 'other' })]
+    expect((await cache.findLatestAny(VID))?.model).toBe('old-model')
+    expect(await cache.findLatestAny('AAAAAAAAAAA')).toBeNull()
+  })
+
   it('re-putting the same key replaces the index entry instead of duplicating it', async () => {
     const s = fakeChromeStorage()
     const cache = new ChromeConceptMapCache(s)

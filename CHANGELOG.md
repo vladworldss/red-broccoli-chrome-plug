@@ -19,9 +19,37 @@ on the map and before you build one.
 - **No API key needed.** Downloading never contacts Gemini. Once a map has
   been built, the subtitles come from the browser's cache, so captions don't
   flicker again.
+- **Always available.** The buttons stay while a map is being built and when
+  building fails (rate limit, Gemini overloaded, missing or wrong key).
 - File names follow the video: `1. Algorithms and Computation [ZA-tUyM_y7s].en.srt`.
 
 Only the transcript text is saved. There is no video or audio download.
+
+### A failed rebuild keeps your map
+
+If Gemini fails (rate limit, overload, a wrong or missing key), the panel
+used to replace the map with an error. Now the map stays on screen, with
+the error shown above it and a **Try again** button. If this version has
+never built a map for the video, the newest older one is shown instead,
+marked **older version** (built with another model or an earlier prompt).
+You only see a plain error when the video has no map at all.
+
+### Clear messages when you hit a Gemini limit
+
+Every limit used to say "Wait a minute and try again", even when the
+daily quota was used up and waiting a minute could not help. Now:
+
+- **Per-minute limit:** the message says whether requests or tokens ran
+  out and how many seconds Google asks you to wait.
+- **Daily limit:** the message names the model and its daily limit and says
+  how long until it resets (midnight Pacific time). It offers **Open
+  Settings** to switch to another model, which has its own quota.
+- **Less waiting on a lost cause:** a daily limit is no longer retried for
+  half a minute before the error appears, and neither is a per-minute wait
+  longer than 30 seconds.
+- **See your limits in AI Studio ↗** links to the page that shows your
+  key's limits and usage. Gemini offers no way to check the remaining quota
+  before a request.
 
 ## [0.1.0] — 2026-10-16
 

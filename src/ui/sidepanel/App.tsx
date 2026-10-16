@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { toMarkdown, toMermaid, toTree, type ConceptMap } from '../../contexts/concept-mapping'
+import { isOutdatedMap, toMarkdown, toMermaid, toTree, type ConceptMap } from '../../contexts/concept-mapping'
 import { watchUrl, type CaptureResult } from '../../contexts/video-capture'
 import { extensionVersion } from '../extensionVersion'
 import { ConceptTree } from './ConceptTree'
 import { MindMap } from './MindMap'
 import { TranscriptDownload } from './TranscriptDownload'
-import { usePanel, type VideoRef, type View } from './usePanel'
+import { modelOf, usePanel, type BuildFailure, type VideoRef, type View } from './usePanel'
 
 export function App() {
   const { view, settings, build, cancel, seek, getTranscript, refresh } = usePanel()
@@ -28,6 +28,7 @@ export function App() {
   )
 
   const hasKey = !!settings?.apiKey
+  const currentModel = settings ? modelOf(settings) : ''
 
   return (
     <div className="sh-app">
@@ -43,6 +44,7 @@ export function App() {
         <Body
           view={view}
           hasKey={hasKey}
+          currentModel={currentModel}
           onBuild={(v, opts) => void build(v, opts)}
           onCancel={cancel}
           onRefresh={() => void refresh()}
@@ -64,6 +66,8 @@ export function App() {
 type BodyProps = {
   view: View
   hasKey: boolean
+  /** Model the next build would use; an older map shows a badge. */
+  currentModel: string
   onBuild: (video: VideoRef, opts?: { force?: boolean; pasted?: string }) => void
   onCancel: () => void
   onRefresh: () => void
@@ -72,7 +76,7 @@ type BodyProps = {
   getTranscript: (video: VideoRef) => Promise<CaptureResult>
 }
 
-function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, getTranscript }: BodyProps) {
+function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek, onToast, getTranscript }: BodyProps) {
   switch (view.kind) {
     case 'loading':
       return <Progress text="Looking for a video…" />
@@ -150,6 +154,9 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
         <>
           <VideoHeader video={view.video} />
           <Progress text={text} onCancel={onCancel} />
+          {/* The transcript is already captured (and cached) by now, so this is
+              instant and doesn't toggle captions while Gemini works. */}
+          <TranscriptDownload video={view.video} getTranscript={getTranscript} onToast={onToast} />
         </>
       )
     }
@@ -160,6 +167,8 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
           video={view.video}
           map={view.map}
           fromCache={view.fromCache}
+          outdated={!!currentModel && isOutdatedMap(view.map, currentModel)}
+          {...(view.error ? { error: view.error } : {})}
           onRebuild={() => onBuild(view.video, { force: true })}
           onSeek={onSeek}
           onToast={onToast}
@@ -175,7 +184,7 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
             <strong>Something went wrong</strong>
             <p>{view.message}</p>
             <div className="sh-row">
-              {view.needsKey ? (
+              {view.action === 'settings' ? (
                 <button className="sh-btn sh-btn-primary" onClick={() => chrome.runtime.openOptionsPage()}>
                   Open Settings
                 </button>
@@ -184,11 +193,23 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
                   Try again
                 </button>
               )}
+              {view.help && <HelpLink help={view.help} />}
             </div>
           </div>
+          {/* Downloads never depend on Gemini or the API key, so a failed build
+              (rate limit, overload, bad key) must not take them away. */}
+          <TranscriptDownload video={view.video} getTranscript={getTranscript} onToast={onToast} />
         </>
       )
   }
+}
+
+function HelpLink({ help }: { help: NonNullable<BuildFailure['help']> }) {
+  return (
+    <a className="sh-small" href={help.url} target="_blank" rel="noreferrer">
+      {help.label} ↗
+    </a>
+  )
 }
 
 function VideoHeader({ video }: { video: VideoRef }) {
@@ -275,6 +296,8 @@ function MapView({
   video,
   map,
   fromCache,
+  outdated,
+  error,
   onRebuild,
   onSeek,
   onToast,
@@ -283,6 +306,9 @@ function MapView({
   video: VideoRef
   map: ConceptMap
   fromCache: boolean
+  outdated: boolean
+  /** A build failed; this map is the previous one, kept on screen. */
+  error?: BuildFailure
   onRebuild: () => void
   onSeek: (t: number) => void
   onToast: (msg: string) => void
@@ -304,11 +330,36 @@ function MapView({
 
   return (
     <>
+      {error && (
+        <div className="sh-card sh-error" role="alert">
+          <strong>Couldn't build a new map</strong>
+          <p>{error.message}</p>
+          <p className="sh-small sh-muted">Showing the {outdated ? 'older' : 'previous'} saved map below.</p>
+          <div className="sh-row">
+            {error.action === 'settings' ? (
+              <button className="sh-btn sh-btn-primary" onClick={() => chrome.runtime.openOptionsPage()}>
+                Open Settings
+              </button>
+            ) : (
+              <button className="sh-btn" onClick={onRebuild}>
+                Try again
+              </button>
+            )}
+            {error.help && <HelpLink help={error.help} />}
+          </div>
+        </div>
+      )}
+
       <div>
         <p className="sh-video-title">{tree.topic || video.title}</p>
         <div className="sh-row sh-small sh-muted">
           <span>{map.concepts.length} concepts</span>
           {fromCache && <span className="sh-badge">cached</span>}
+          {outdated && (
+            <span className="sh-badge" title={`Built with ${map.model}, prompt ${map.promptVersion}. Rebuild for the current version.`}>
+              older version
+            </span>
+          )}
           {!map.timed && <span className="sh-badge">no timestamps</span>}
         </div>
       </div>

@@ -19,6 +19,11 @@ export interface ConceptMapCache {
    * opens, before (and without) capturing the transcript again.
    */
   findLatest(videoId: string, promptVersion: string, model: string): Promise<ConceptMap | null>
+  /**
+   * Most recent map for a video under ANY prompt version or model. Only a
+   * fallback for when building fails: an older map beats an empty error screen.
+   */
+  findLatestAny(videoId: string): Promise<ConceptMap | null>
   put(map: ConceptMap): Promise<void>
 }
 

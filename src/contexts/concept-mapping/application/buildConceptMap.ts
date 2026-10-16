@@ -166,6 +166,25 @@ export async function loadCachedConceptMap(
   return deps.cache.findLatest(videoId, PROMPT_VERSION, deps.model).catch(() => null)
 }
 
+/**
+ * What to show when a build fails: the map for the current prompt version and
+ * model if one is cached, otherwise the newest map of ANY version. Null when
+ * the video has never had a map.
+ */
+export async function loadFallbackConceptMap(
+  videoId: string,
+  deps: { cache: ConceptMapCache; model: string },
+): Promise<ConceptMap | null> {
+  const current = await loadCachedConceptMap(videoId, deps)
+  if (current) return current
+  return deps.cache.findLatestAny(videoId).catch(() => null)
+}
+
+/** True when a map was built with another model or prompt version than now. */
+export function isOutdatedMap(map: ConceptMap, model: string): boolean {
+  return map.promptVersion !== PROMPT_VERSION || map.model !== model
+}
+
 function isSchemaProblem(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false
   const e = err as { name?: unknown; kind?: unknown }

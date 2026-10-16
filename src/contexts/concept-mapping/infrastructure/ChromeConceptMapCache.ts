@@ -19,12 +19,20 @@ export class ChromeConceptMapCache implements ConceptMapCache {
   }
 
   async findLatest(videoId: string, promptVersion: string, model: string): Promise<ConceptMap | null> {
-    const idx = await this.readIndex(videoId)
-    const candidates = idx
-      .filter((e) => e.promptVersion === promptVersion && e.model === model)
+    return this.newestOf(videoId, (e) => e.promptVersion === promptVersion && e.model === model)
+  }
+
+  async findLatestAny(videoId: string): Promise<ConceptMap | null> {
+    return this.newestOf(videoId, () => true)
+  }
+
+  /** Newest indexed map passing `accept`; entries whose map is gone are skipped. */
+  private async newestOf(videoId: string, accept: (e: IndexEntry) => boolean): Promise<ConceptMap | null> {
+    const candidates = (await this.readIndex(videoId))
+      .filter(accept)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     for (const e of candidates) {
-      const map = await this.get({ videoId, lang: e.lang, promptVersion, model })
+      const map = await this.get({ videoId, lang: e.lang, promptVersion: e.promptVersion, model: e.model })
       if (map) return map
     }
     return null

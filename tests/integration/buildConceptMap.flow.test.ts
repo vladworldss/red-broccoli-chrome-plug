@@ -5,7 +5,9 @@ import {
   NoConceptsError,
   PROMPT_VERSION,
   buildConceptMap,
+  isOutdatedMap,
   loadCachedConceptMap,
+  loadFallbackConceptMap,
   toMarkdown,
   toTree,
   type BuildConceptMapInput,
@@ -105,6 +107,37 @@ describe('buildConceptMap flow (transcript → map → cache → export)', () =>
     // The panel's open-a-video path finds it without knowing the language.
     expect(await loadCachedConceptMap(VID, { cache, model: 'fake-model' })).not.toBeNull()
     expect(await loadCachedConceptMap(VID, { cache, model: 'another-model' })).toBeNull()
+  })
+
+  it('a failed rebuild leaves the previous map in the cache for the fallback', async () => {
+    const cache = new ChromeConceptMapCache(fakeChromeStorage())
+    const { map: first } = await buildConceptMap(input(), { llm: fakeLlm().llm, cache })
+
+    const failing: LlmPort = {
+      modelId: 'fake-model',
+      generateJson: vi.fn(async () => {
+        throw new LlmError('rate-limit', '429')
+      }),
+    }
+    await expect(buildConceptMap(input({ force: true }), { llm: failing, cache })).rejects.toMatchObject({
+      kind: 'rate-limit',
+    })
+    expect(await loadFallbackConceptMap(VID, { cache, model: 'fake-model' })).toEqual(first)
+  })
+
+  it('fallback prefers the current prompt+model, else any older map, flagged as outdated', async () => {
+    const cache = new ChromeConceptMapCache(fakeChromeStorage())
+    expect(await loadFallbackConceptMap(VID, { cache, model: 'new-model' })).toBeNull()
+
+    await buildConceptMap(input(), { llm: { ...fakeLlm().llm, modelId: 'old-model' }, cache, clock: () => '2026-10-16T09:00:00Z' })
+    const older = await loadFallbackConceptMap(VID, { cache, model: 'new-model' })
+    expect(older?.model).toBe('old-model')
+    expect(isOutdatedMap(older!, 'new-model')).toBe(true)
+
+    await buildConceptMap(input(), { llm: { ...fakeLlm().llm, modelId: 'new-model' }, cache, clock: () => '2026-10-16T08:00:00Z' })
+    const current = await loadFallbackConceptMap(VID, { cache, model: 'new-model' })
+    expect(current?.model).toBe('new-model') // current version wins even though it is older in time
+    expect(isOutdatedMap(current!, 'new-model')).toBe(false)
   })
 
   it('long transcripts are chunked and concepts merged across chunks', async () => {
