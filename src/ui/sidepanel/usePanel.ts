@@ -125,6 +125,22 @@ export function usePanel() {
     )
   }, [resolve, settingsLoaded])
 
+  // --- transcript -------------------------------------------------------------------
+  /** Cache first, then the tab's providers. Shared by Build and Download. */
+  const getTranscript = useCallback(
+    (video: VideoRef) => {
+      const client = new YouTubeTabClient(video.tabId)
+      return captureTranscript(
+        { videoId: video.videoId },
+        {
+          providers: [client.provider('intercept'), client.provider('dom')],
+          ...(transcriptCache ? { cache: transcriptCache } : {}),
+        },
+      )
+    },
+    [transcriptCache],
+  )
+
   // --- build ----------------------------------------------------------------------
   const build = useCallback(
     async (video: VideoRef, opts: { force?: boolean; pasted?: string } = {}) => {
@@ -151,11 +167,7 @@ export function usePanel() {
           await transcriptCache?.put(transcript).catch(() => {})
         } else {
           setView({ kind: 'capturing', video })
-          const client = new YouTubeTabClient(video.tabId)
-          const res = await captureTranscript(
-            { videoId: video.videoId },
-            { providers: [client.provider('intercept'), client.provider('dom')], ...(transcriptCache ? { cache: transcriptCache } : {}) },
-          )
+          const res = await getTranscript(video)
           if (stale()) return
           if (!res.transcript) {
             setView({ kind: 'no-captions', video, attempts: res.attempts })
@@ -198,7 +210,7 @@ export function usePanel() {
         if (abortRef.current === ac) abortRef.current = null
       }
     },
-    [mapCache, transcriptCache],
+    [getTranscript, mapCache, transcriptCache],
   )
 
   const cancel = useCallback(() => {
@@ -211,7 +223,7 @@ export function usePanel() {
     return client ? client.seek(t) : false
   }, [])
 
-  return { view, settings, build, cancel, seek, refresh: resolve }
+  return { view, settings, build, cancel, seek, getTranscript, refresh: resolve }
 }
 
 function errorText(err: unknown): string {

@@ -1,7 +1,7 @@
 {
   "name": "studhelper",
   "displayName": "StudHelper: Lecture Concept Maps",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Build a study concept map — key terms, definitions, prerequisites and timestamps — from the lecture video you are watching.",
   "private": true,
   "scripts": {

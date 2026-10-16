@@ -21,6 +21,7 @@ watch on YouTube. This policy explains what data it handles.
 | Your Gemini API key | Stored in `chrome.storage.local` in your Chrome profile, unencrypted. Sent only to the Gemini API, as an authentication header | So the extension can call Gemini on your behalf |
 | Settings (model name, map language) | `chrome.storage.local` | Your preferences |
 | Transcripts and finished concept maps | `chrome.storage.local` | So reopening a video is instant; you can clear them in Settings |
+| Subtitle files you download (.srt / .txt) | Saved by your browser to your computer; nothing is sent anywhere | So you can keep the transcript |
 
 Your settings and API key are **not** synced to other devices.
 

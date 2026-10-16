@@ -10,7 +10,7 @@ export type {
   TranscriptSource,
   VideoMeta,
 } from './domain'
-export { parseManualTranscript, videoIdFromUrl } from './domain'
+export { parseManualTranscript, subtitleFileName, toSrt, toTimestampedText, videoIdFromUrl } from './domain'
 export { ChromeTranscriptCache } from './infrastructure/ChromeTranscriptCache'
 export type { TabState } from './infrastructure/messages'
 export {

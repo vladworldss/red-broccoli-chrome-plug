@@ -1,4 +1,4 @@
-# Chrome Web Store listing — StudHelper 0.1.0
+# Chrome Web Store listing — StudHelper 0.2.0
 
 ## Basics
 
@@ -9,7 +9,10 @@
 
 Brand policy: don't use the YouTube logo, don't start the name with
 "YouTube", and don't imply it is an official tool. "for YouTube lectures"
-in the description is fine. There is no download feature.
+in the description is fine. There is no video or audio download feature;
+downloader extensions get rejected. The subtitle download (.srt/.txt) saves
+only the transcript text already loaded for the map. Describe it as study
+notes, never as "download from YouTube".
 
 ## Short description (≤132 chars)
 
@@ -27,6 +30,7 @@ in the description is fine. There is no download feature.
 > • A timestamp on every concept. Click it to jump to where it is explained
 > • A zoomable mind map view
 > • Copy as Markdown (for Obsidian or Notion, with timestamp links) or as a Mermaid diagram
+> • Save the lecture's subtitles as .srt (with timing) or readable .txt
 >
 > Maps are saved in your browser, so reopening a lecture shows its map instantly.
 >

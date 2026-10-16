@@ -4,6 +4,25 @@ All notable changes to StudHelper are documented here.
 Versions follow the `version` field in [package.json](package.json), which is
 what the side panel header shows.
 
+## [0.2.0] — 2026-10-16
+
+### Download the lecture's subtitles
+
+The side panel now has **Download .srt** and **Download .txt** buttons, both
+on the map and before you build one.
+
+- **.srt** is a standard subtitle file with the original timing. It opens in
+  VLC, any video editor, or a subtitle tool.
+- **.txt** is readable text, one sentence-like line per entry, each starting
+  with its timestamp (`12:14 The derivative is…`). Paste it back into the
+  panel's paste box to rebuild a map, after editing it if you like.
+- **No API key needed.** Downloading never contacts Gemini. Once a map has
+  been built, the subtitles come from the browser's cache, so captions don't
+  flicker again.
+- File names follow the video: `1. Algorithms and Computation [ZA-tUyM_y7s].en.srt`.
+
+Only the transcript text is saved. There is no video or audio download.
+
 ## [0.1.0] — 2026-10-16
 
 ### First version: concept maps from YouTube lectures

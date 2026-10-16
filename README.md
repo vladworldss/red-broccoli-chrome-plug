@@ -9,7 +9,11 @@ and the side panel shows the lecture's **key concepts** as a tree:
   concept is explained;
 - a **Mind map** tab with the same tree as a zoomable map;
 - **Copy Markdown** (Obsidian/Notion-ready, with timestamp links) and
-  **Copy Mermaid** (the full concept graph).
+  **Copy Mermaid** (the full concept graph — paste it into
+  [mermaid.live](https://mermaid.live), or a ```` ```mermaid ```` block in
+  GitHub/Obsidian/Notion);
+- **Download .srt / .txt**: the lecture's subtitles as a file. This works
+  without an API key, and the .txt can be pasted back to rebuild a map.
 
 It is not a summary of the video. It is a map of the concepts.
 

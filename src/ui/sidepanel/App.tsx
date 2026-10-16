@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { toMarkdown, toMermaid, toTree, type ConceptMap } from '../../contexts/concept-mapping'
-import { watchUrl } from '../../contexts/video-capture'
+import { watchUrl, type CaptureResult } from '../../contexts/video-capture'
 import { extensionVersion } from '../extensionVersion'
 import { ConceptTree } from './ConceptTree'
 import { MindMap } from './MindMap'
+import { TranscriptDownload } from './TranscriptDownload'
 import { usePanel, type VideoRef, type View } from './usePanel'
 
 export function App() {
-  const { view, settings, build, cancel, seek, refresh } = usePanel()
+  const { view, settings, build, cancel, seek, getTranscript, refresh } = usePanel()
   const version = useMemo(extensionVersion, [])
   const [toast, setToast] = useState<string | null>(null)
 
@@ -47,6 +48,7 @@ export function App() {
           onRefresh={() => void refresh()}
           onSeek={onSeek}
           onToast={setToast}
+          getTranscript={getTranscript}
         />
       </main>
 
@@ -67,9 +69,10 @@ type BodyProps = {
   onRefresh: () => void
   onSeek: (t: number) => void
   onToast: (msg: string) => void
+  getTranscript: (video: VideoRef) => Promise<CaptureResult>
 }
 
-function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast }: BodyProps) {
+function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, getTranscript }: BodyProps) {
   switch (view.kind) {
     case 'loading':
       return <Progress text="Looking for a video…" />
@@ -107,6 +110,7 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast }: B
               The transcript is sent to Google Gemini with your API key.
             </p>
           </div>
+          <TranscriptDownload video={view.video} getTranscript={getTranscript} onToast={onToast} />
         </>
       )
 
@@ -159,6 +163,7 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast }: B
           onRebuild={() => onBuild(view.video, { force: true })}
           onSeek={onSeek}
           onToast={onToast}
+          getTranscript={getTranscript}
         />
       )
 
@@ -273,6 +278,7 @@ function MapView({
   onRebuild,
   onSeek,
   onToast,
+  getTranscript,
 }: {
   video: VideoRef
   map: ConceptMap
@@ -280,6 +286,7 @@ function MapView({
   onRebuild: () => void
   onSeek: (t: number) => void
   onToast: (msg: string) => void
+  getTranscript: (video: VideoRef) => Promise<CaptureResult>
 }) {
   const [tab, setTab] = useState<'tree' | 'mindmap'>('tree')
   const tree = useMemo(() => toTree(map), [map])
@@ -317,6 +324,7 @@ function MapView({
           Rebuild
         </button>
       </div>
+      <TranscriptDownload video={video} getTranscript={getTranscript} onToast={onToast} />
 
       <div className="sh-tabs" role="tablist">
         <button className="sh-tab" role="tab" aria-selected={tab === 'tree'} onClick={() => setTab('tree')}>
