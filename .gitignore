@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Plasmo / Parcel build artifacts
+.plasmo/
+.parcel-cache/
+.cache/
+build/
+dist/
+*.zip
+
+# env files (keep the committed template visible)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editor/IDE
+.idea/
+.vscode/
+.DS_Store
+.claude/
+
+# Test/coverage
+coverage/
+
+# Agent notes stay local (same convention as chrome_ai_plug)
+CLAUDE.md

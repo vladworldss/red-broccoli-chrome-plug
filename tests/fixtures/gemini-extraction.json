@@ -1,0 +1,13 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          { "text": "{\"topic\":\"Calculus: limits and derivatives\",\"concepts\":[{\"term\":\"Limit\",\"definition\":\"The value a function approaches as its input approaches a point.\",\"aliases\":[\"lim\"],\"t\":4,\"importance\":0.9},{\"term\":\"Derivative\",\"definition\":\"The limit of the difference quotient; the instantaneous rate of change.\",\"aliases\":[\"f'(x)\",\"dy/dx\"],\"t\":734,\"importance\":1},{\"term\":\"Difference quotient\",\"definition\":\"Average rate of change over an interval.\",\"aliases\":[],\"t\":734,\"importance\":0.6}]}" }
+        ]
+      },
+      "finishReason": "STOP"
+    }
+  ]
+}

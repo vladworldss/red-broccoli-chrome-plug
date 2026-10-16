@@ -1,0 +1,18 @@
+{
+  "videoDetails": {
+    "videoId": "dQw4w9WgXcQ",
+    "title": "Calculus 1: Limits and Derivatives",
+    "lengthSeconds": "3725",
+    "author": "Math Lectures",
+    "shortDescription": "Lecture notes below.\n\n0:00 Intro\n2:30 Limits\n12:14 Derivative\n31:05 Applications\n\nsee also 3:15 in part 2"
+  },
+  "captions": {
+    "playerCaptionsTracklistRenderer": {
+      "captionTracks": [
+        { "baseUrl": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=de", "name": { "simpleText": "German" }, "languageCode": "de" },
+        { "baseUrl": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en&kind=asr", "name": { "runs": [{ "text": "English (auto-generated)" }] }, "languageCode": "en", "kind": "asr" },
+        { "baseUrl": "https://www.youtube.com/api/timedtext?v=dQw4w9WgXcQ&lang=en", "name": { "simpleText": "English" }, "languageCode": "en" }
+      ]
+    }
+  }
+}

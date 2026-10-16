@@ -1,0 +1,351 @@
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f4f6fa;
+  --fg: #1b1f27;
+  --muted: #5d6675;
+  --border: #dde2ea;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --accent-soft: #e6eeff;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --ok: #1f7a3d;
+  --chip: #eef1f6;
+  --radius: 8px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --markmap-text-color: var(--fg);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15181e;
+    --bg-soft: #1d2129;
+    --fg: #e6e9ef;
+    --muted: #9aa3b2;
+    --border: #2d333f;
+    --accent: #6d9bff;
+    --accent-fg: #0b1020;
+    --accent-soft: #1f2a44;
+    --danger: #ff8a80;
+    --danger-soft: #3a1f1f;
+    --ok: #6fcf8f;
+    --chip: #262b35;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 var(--font);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.sh-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ---- header ------------------------------------------------------------ */
+.sh-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+}
+.sh-header h1 {
+  font-size: 14px;
+  margin: 0;
+  flex: 1;
+}
+.sh-version {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sh-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.sh-video-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 0;
+}
+.sh-muted {
+  color: var(--muted);
+}
+.sh-small {
+  font-size: 12px;
+}
+
+/* ---- buttons ----------------------------------------------------------- */
+.sh-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--fg);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+}
+.sh-btn:hover {
+  border-color: var(--accent);
+}
+.sh-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sh-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  padding: 8px 14px;
+}
+.sh-btn-link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+}
+.sh-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ---- notices ----------------------------------------------------------- */
+.sh-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--bg-soft);
+}
+.sh-error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.sh-error strong {
+  color: var(--danger);
+}
+.sh-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sh-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: sh-spin 0.8s linear infinite;
+}
+@keyframes sh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sh-toast {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  z-index: 10;
+}
+
+textarea.sh-input,
+input.sh-input,
+select.sh-input {
+  width: 100%;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+textarea.sh-input {
+  min-height: 140px;
+  resize: vertical;
+}
+
+/* ---- map view ---------------------------------------------------------- */
+.sh-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.sh-tab {
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.sh-tab[aria-selected='true'] {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.sh-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.sh-tree,
+.sh-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sh-tree ul {
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  margin-left: 7px;
+}
+.sh-node {
+  margin: 2px 0;
+}
+.sh-node-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.sh-caret {
+  width: 14px;
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 0;
+  font-size: 10px;
+}
+.sh-term {
+  border: none;
+  background: none;
+  color: var(--fg);
+  padding: 1px 2px;
+  text-align: left;
+  border-radius: 4px;
+}
+.sh-term:hover {
+  background: var(--accent-soft);
+}
+.sh-term.sh-imp-high {
+  font-weight: 700;
+}
+.sh-term.sh-imp-mid {
+  font-weight: 600;
+}
+.sh-ts {
+  flex: none;
+  border: none;
+  background: var(--chip);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.sh-ts:hover {
+  background: var(--accent-soft);
+}
+.sh-details {
+  margin: 2px 0 6px 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sh-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.sh-tag {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--fg);
+}
+
+.sh-mindmap {
+  width: 100%;
+  height: calc(100vh - 210px);
+  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+/* markmap sets its own vars on `.markmap` (and a dark variant); this selector
+   outranks both so the map follows the panel's light/dark theme. */
+svg.sh-mindmap.markmap {
+  --markmap-text-color: var(--fg);
+  --markmap-circle-open-bg: var(--bg);
+  --markmap-a-color: var(--accent);
+  --markmap-a-hover-color: var(--accent);
+  --markmap-font: 400 13px/18px var(--font);
+  color: var(--fg);
+}
+.sh-mindmap a[data-t] {
+  color: var(--accent);
+  font-size: 0.85em;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- options ----------------------------------------------------------- */
+.sh-options {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+.sh-options h1 {
+  font-size: 20px;
+}
+.sh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.sh-field label {
+  font-weight: 600;
+}
+.sh-status-ok {
+  color: var(--ok);
+}
+.sh-status-err {
+  color: var(--danger);
+}
