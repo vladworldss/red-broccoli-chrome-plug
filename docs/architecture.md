@@ -1,7 +1,6 @@
 # Architecture
 
-This is a condensed arc42 view. The original analysis and roadmap are in
-[../studhelper.md](../studhelper.md).
+This is a condensed arc42 view.
 
 ## Runtime view
 
