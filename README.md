@@ -100,10 +100,10 @@ The code is split into three DDD bounded contexts. Details are in
 
 ## Status
 
-This is the MVP described in [studhelper.md](studhelper.md): cloud Gemini with
-your own key, concepts with `part-of` and `requires` links, a tree and mind
-map, and a cache. The v2 ideas (local Gemini Nano, course-wide graphs across
-a playlist, Anki export, quizzes) are listed there.
+This is the MVP: cloud AI providers with your own key, concepts with
+`part-of` and `requires` links, a tree and mind map, and a cache. Ideas for
+later: local Gemini Nano, course-wide graphs across a playlist, Anki export,
+quizzes.
 
 YouTube changes its page often. If capture breaks, start with
 `src/contexts/video-capture/infrastructure/youtube/selectors.ts`.
