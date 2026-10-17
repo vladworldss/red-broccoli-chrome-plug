@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build a Chrome Web Store submission zip from a clean production build.
-# (Ported from chrome_ai_plug; assertions adapted to StudHelper's manifest.)
+# (Ported from chrome_ai_plug; assertions adapted to RedBroccoli's manifest.)
 #
 # The zip is created FROM build/chrome-mv3-prod only, so dev artifacts
 # (.git, node_modules, tests, docs, sources, .env*) can never leak into it.
-# Output: dist/studhelper-v<version>.zip
+# Output: dist/red-broccoli-v<version>.zip
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,7 +45,7 @@ if [[ ! -f "$BUILD_DIR/manifest.json" ]]; then
 fi
 
 VERSION="$(node -p "require('$BUILD_DIR/manifest.json').version")"
-ZIP="$DIST_DIR/studhelper-v$VERSION.zip"
+ZIP="$DIST_DIR/red-broccoli-v$VERSION.zip"
 
 echo "==> Sanity checks"
 MV="$(node -p "require('$BUILD_DIR/manifest.json').manifest_version")"

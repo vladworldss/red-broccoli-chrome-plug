@@ -1,5 +1,5 @@
 /**
- * Every LLM provider StudHelper can use, as data. Adding a provider is a new
+ * Every LLM provider RedBroccoli can use, as data. Adding a provider is a new
  * row here (plus a host permission); the adapters are generic.
  *
  * Verified 2026-10-16 against provider docs / live model lists. Free model

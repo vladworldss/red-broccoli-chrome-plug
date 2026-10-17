@@ -34,7 +34,7 @@ export function App() {
   return (
     <div className="sh-app">
       <header className="sh-header">
-        <h1>StudHelper</h1>
+        <h1>RedBroccoli</h1>
         <span className="sh-version">v{version}</span>
         <button className="sh-btn" onClick={() => chrome.runtime.openOptionsPage()} title="Settings">
           ⚙

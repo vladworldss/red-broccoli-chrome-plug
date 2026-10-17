@@ -1,4 +1,10 @@
-# StudHelper: Lecture Concept Maps
+# 🥦 RedBroccoli
+
+> “Don't look at the whole forest. Just look at the Red Broccoli.”
+
+**RedBroccoli** is a fun and clever extension that instantly “grows” a
+knowledge graph of any YouTube lecture. It cuts out the fluff and leaves you
+with the juicy essence.
 
 A Chrome extension for students. Open a lecture on YouTube, click **Build map**,
 and the side panel shows the lecture's **key concepts** as a tree:
@@ -39,7 +45,7 @@ Calculus: limits and derivatives
 3. **Cache.** The map is stored in your browser, so reopening the video
    shows it instantly and makes no API calls. Use **Rebuild** to build it again.
 
-There is no StudHelper server and no analytics. See
+There is no RedBroccoli server and no analytics. See
 [docs/store/privacy-policy.md](docs/store/privacy-policy.md).
 
 ## Install (developer mode)

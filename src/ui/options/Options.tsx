@@ -138,13 +138,13 @@ export function Options() {
 
   return (
     <main className="sh-options">
-      <h1>StudHelper settings</h1>
+      <h1>RedBroccoli settings</h1>
       <p className="sh-muted">Version {version}</p>
 
       <section>
         <h2>AI providers</h2>
         <p className="sh-small">
-          StudHelper uses an AI model to find the concepts in a lecture. Add a free key for one or more providers. When
+          RedBroccoli uses an AI model to find the concepts in a lecture. Add a free key for one or more providers. When
           one runs out of quota or fails, the next one in this list builds the map automatically.
         </p>
 
@@ -219,7 +219,7 @@ export function Options() {
             When you press “Build map”, the video's title and transcript are sent to the first provider in your list that
             is enabled and has a key — and, only if it fails, to the next ones, in order.
           </li>
-          <li>Nothing is sent anywhere else. StudHelper has no server and collects no analytics.</li>
+          <li>Nothing is sent anywhere else. RedBroccoli has no server and collects no analytics.</li>
           <li>
             Free tiers may let the provider use submitted content to improve its products (Google and Mistral say so
             for their free plans). Check each provider's terms.

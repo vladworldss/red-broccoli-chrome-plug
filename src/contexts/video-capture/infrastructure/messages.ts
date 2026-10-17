@@ -12,8 +12,8 @@ import type { Transcript, VideoMeta } from '../domain'
 
 // --- page hop --------------------------------------------------------------
 
-export const PAGE_FROM_MAIN = 'studhelper:main'
-export const PAGE_FROM_BRIDGE = 'studhelper:bridge'
+export const PAGE_FROM_MAIN = 'redbroccoli:main'
+export const PAGE_FROM_BRIDGE = 'redbroccoli:bridge'
 
 export type MainToBridge =
   | { source: typeof PAGE_FROM_MAIN; kind: 'timedtext'; url: string; body: string }

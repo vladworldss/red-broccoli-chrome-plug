@@ -137,7 +137,7 @@ export function parseTranscriptRows(
  * Free text the user pasted. Understands the shapes people actually paste:
  *  - YouTube's transcript panel copied as-is: a timestamp line, then text lines
  *  - "0:12 text" / "[0:12] text" / "(0:12) text" on one line
- *  - a subtitle file: SRT or WebVTT (e.g. the one StudHelper itself saves)
+ *  - a subtitle file: SRT or WebVTT (e.g. the one RedBroccoli itself saves)
  *  - plain prose with no timestamps at all → `timed: false`
  */
 export function parseManualTranscript(input: string): { segments: Segment[]; timed: boolean } {

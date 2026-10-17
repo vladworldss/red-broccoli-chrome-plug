@@ -1,13 +1,13 @@
-# StudHelper — Privacy Policy
+# RedBroccoli — Privacy Policy
 
-_Last updated: 2026-10-16 · applies to version 0.1.0 and later_
+_Last updated: 2026-10-17 · applies to version 0.1.0 and later_
 
-StudHelper ("the extension") builds study concept maps from lecture videos you
+RedBroccoli ("the extension") builds study concept maps from lecture videos you
 watch on YouTube. This policy explains what data it handles.
 
 ## Summary
 
-- StudHelper has **no server** and collects **no analytics or telemetry**.
+- RedBroccoli has **no server** and collects **no analytics or telemetry**.
 - When **you** press "Build map", the video's **title and transcript** are sent
   to the **AI provider you set up** (Google Gemini by default; also Mistral,
   Groq, OpenRouter or DeepSeek if you enable them) using **your own API key**.
@@ -32,7 +32,7 @@ products. Google states this for the free Gemini API
 ([Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms)), and
 Mistral for its free plan. Check the terms of the providers you enable.
 
-## What StudHelper does NOT do
+## What RedBroccoli does NOT do
 
 - It does not read pages other than YouTube video pages.
 - It does not collect browsing history, personal information, or account data.

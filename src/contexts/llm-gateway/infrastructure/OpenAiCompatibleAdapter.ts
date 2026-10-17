@@ -99,7 +99,7 @@ export class OpenAiCompatibleAdapter implements LlmPort {
       'content-type': 'application/json',
       authorization: `Bearer ${this.apiKey}`,
       // OpenRouter's app attribution; harmless elsewhere, so only sent there.
-      ...(this.preset.id === 'openrouter' ? { 'X-Title': 'StudHelper' } : {}),
+      ...(this.preset.id === 'openrouter' ? { 'X-Title': 'RedBroccoli' } : {}),
     }
   }
 
@@ -117,7 +117,7 @@ export class OpenAiCompatibleAdapter implements LlmPort {
         ? {
             response_format: {
               type: 'json_schema',
-              json_schema: { name: 'studhelper', strict: true, schema: toStandardJsonSchema(req.schema) },
+              json_schema: { name: 'redbroccoli', strict: true, schema: toStandardJsonSchema(req.schema) },
             },
           }
         : mode === 'json-object'

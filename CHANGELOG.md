@@ -1,8 +1,17 @@
 # Changelog
 
-All notable changes to StudHelper are documented here.
-Versions follow the `version` field in [package.json](package.json), which is
-what the side panel header shows.
+All notable changes to RedBroccoli (called StudHelper up to 0.3.0) are
+documented here. Versions follow the `version` field in
+[package.json](package.json), which is what the side panel header shows.
+
+## [0.4.0] — 2026-10-17
+
+### StudHelper is now RedBroccoli 🥦
+
+- **New name and logo.** In Chrome and the Web Store the extension is now
+  "RedBroccoli: Lecture Concept Maps", with a red broccoli icon.
+- **Nothing to set up again.** Your API keys, provider order and saved maps
+  carry over as they are.
 
 ## [0.3.0] — 2026-10-16
 

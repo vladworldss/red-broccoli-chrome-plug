@@ -1,4 +1,4 @@
-# StudHelper — common project tasks.
+# RedBroccoli — common project tasks.
 #
 # Plasmo browser extension (npm). Run `make help` to list targets.
 
@@ -94,10 +94,6 @@ distclean: clean ## clean + remove node_modules and packaged zips
 .PHONY: store-zip
 store-zip: node_modules ## Hermetic prod build + manifest assertions + dist/*.zip
 	bash scripts/build-store-zip.sh
-
-.PHONY: icon
-icon: ## Regenerate the placeholder icon (assets/icon.png)
-	node scripts/make-icon.mjs
 
 .PHONY: smoke-live
 smoke-live: node_modules ## Live round trip per provider with a key in env/.env.local (spends quota)

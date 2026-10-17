@@ -1,7 +1,7 @@
 {
-  "name": "studhelper",
-  "displayName": "StudHelper: Lecture Concept Maps",
-  "version": "0.3.0",
+  "name": "red-broccoli-chrome-plug",
+  "displayName": "RedBroccoli: Lecture Concept Maps",
+  "version": "0.4.0",
   "description": "Build a study concept map \u2014 key terms, definitions, prerequisites and timestamps \u2014 from the lecture video you are watching.",
   "private": true,
   "scripts": {

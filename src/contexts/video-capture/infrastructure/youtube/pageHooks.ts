@@ -26,15 +26,15 @@ type YtPlayer = HTMLElement & {
 }
 
 type HookedWindow = Window & typeof globalThis & {
-  __studhelperHooks?: boolean
+  __redbroccoliHooks?: boolean
   ytInitialPlayerResponse?: unknown
 }
 
 const TIMEDTEXT = /\/api\/timedtext\b/
 
 export function installPageHooks(win: HookedWindow = window as HookedWindow): void {
-  if (win.__studhelperHooks) return
-  win.__studhelperHooks = true
+  if (win.__redbroccoliHooks) return
+  win.__redbroccoliHooks = true
 
   const post = (msg: MainToBridge) => win.postMessage(msg, win.location.origin)
 
