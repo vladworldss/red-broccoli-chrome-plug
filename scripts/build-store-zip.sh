@@ -82,8 +82,17 @@ const m = require(`${dir}/manifest.json`)
 //            world:"MAIN" + document_start.
 // sidePanel: the UI.  storage: settings + cache.
 const EXPECTED_PERMISSIONS = ['scripting', 'sidePanel', 'storage']
-// The only network destination: Gemini, with the user's own key.
+// Required: Google's Gemini API (default provider; Gemma uses it too).
 const EXPECTED_HOSTS = ['https://generativelanguage.googleapis.com/*']
+// Optional, requested at runtime only for providers the user enables in
+// Settings (0.3.0). Must match PROVIDERS[*].host where optionalHost is true —
+// a unit test (tests/unit/providers.test.ts) holds that side.
+const EXPECTED_OPTIONAL_HOSTS = [
+  'https://api.mistral.ai/*',
+  'https://api.groq.com/*',
+  'https://openrouter.ai/*',
+  'https://api.deepseek.com/*',
+]
 // Content scripts touch YouTube watch pages only. No host permission is needed
 // for that; reach comes from these match patterns.
 const EXPECTED_MATCHES = ['https://www.youtube.com/*']
@@ -105,8 +114,11 @@ const hosts = m.host_permissions ?? []
 if (!eq(hosts, EXPECTED_HOSTS)) {
   errors.push(`host_permissions must be ${JSON.stringify(EXPECTED_HOSTS)}, found: ${JSON.stringify(hosts)}`)
 }
-if ((m.optional_host_permissions ?? []).length > 0) {
-  errors.push(`optional_host_permissions must be absent, found: ${JSON.stringify(m.optional_host_permissions)}`)
+const optionalHosts = m.optional_host_permissions ?? []
+if (!eq(optionalHosts, EXPECTED_OPTIONAL_HOSTS)) {
+  errors.push(
+    `optional_host_permissions must be ${JSON.stringify(EXPECTED_OPTIONAL_HOSTS)}, found: ${JSON.stringify(optionalHosts)}`,
+  )
 }
 
 const matches = (m.content_scripts ?? []).flatMap((cs) => cs.matches ?? [])
@@ -150,7 +162,8 @@ if grep -rInE "$REMOTE_RE" "$BUILD_DIR" --include='*.js' --include='*.html' >/de
   exit 1
 fi
 echo "    manifest_version=3, permissions=[scripting, sidePanel, storage],"
-echo "    hosts=[generativelanguage], matches=[youtube], MAIN hook registered,"
+echo "    hosts=[generativelanguage], optional hosts=[mistral, groq, openrouter, deepseek],"
+echo "    matches=[youtube], MAIN hook registered,"
 echo "    no secrets, no remote code — OK"
 
 # Prune web_accessible_resources entries pointing at files absent from the

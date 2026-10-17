@@ -14,11 +14,11 @@ export type ConceptMapKey = {
 export interface ConceptMapCache {
   get(key: ConceptMapKey): Promise<ConceptMap | null>
   /**
-   * Most recent map for a video under the current prompt version and model,
-   * in any transcript language. Lets the panel show a map the instant a video
-   * opens, before (and without) capturing the transcript again.
+   * Most recent map for a video under `promptVersion` — and `model`, when
+   * given — in any transcript language. Lets the panel show a map the instant
+   * a video opens, before (and without) capturing the transcript again.
    */
-  findLatest(videoId: string, promptVersion: string, model: string): Promise<ConceptMap | null>
+  findLatest(videoId: string, promptVersion: string, model?: string): Promise<ConceptMap | null>
   /**
    * Most recent map for a video under ANY prompt version or model. Only a
    * fallback for when building fails: an older map beats an empty error screen.

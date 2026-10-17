@@ -9,26 +9,28 @@ watch on YouTube. This policy explains what data it handles.
 
 - StudHelper has **no server** and collects **no analytics or telemetry**.
 - When **you** press "Build map", the video's **title and transcript** are sent
-  to **Google's Gemini API** using **your own API key**. Nothing is sent before
-  you press it.
+  to the **AI provider you set up** (Google Gemini by default; also Mistral,
+  Groq, OpenRouter or DeepSeek if you enable them) using **your own API key**.
+  Nothing is sent before you press it.
 - Your API key, settings and saved maps stay **in your browser**.
 
 ## What data is handled, and where it goes
 
 | Data | Where it goes | Why |
 |---|---|---|
-| Video title and transcript (captions) of the video in the active tab | Google Gemini API (`generativelanguage.googleapis.com`), only when you press Build map or Rebuild | To find the key concepts |
-| Your Gemini API key | Stored in `chrome.storage.local` in your Chrome profile, unencrypted. Sent only to the Gemini API, as an authentication header | So the extension can call Gemini on your behalf |
-| Settings (model name, map language) | `chrome.storage.local` | Your preferences |
+| Video title and transcript (captions) of the video in the active tab | The first AI provider in your list that is enabled and has a key, and the next ones only if it fails: Google Gemini/Gemma (`generativelanguage.googleapis.com`), Mistral (`api.mistral.ai`), Groq (`api.groq.com`), OpenRouter (`openrouter.ai`), DeepSeek (`api.deepseek.com`). Only when you press Build map or Rebuild | To find the key concepts |
+| Your API keys | Stored in `chrome.storage.local` in your Chrome profile, unencrypted. Each key is sent only to its own provider, as an authentication header | So the extension can call the provider on your behalf |
+| Settings (providers, their order, models, map language) | `chrome.storage.local` | Your preferences |
 | Transcripts and finished concept maps | `chrome.storage.local` | So reopening a video is instant; you can clear them in Settings |
 | Subtitle files you download (.srt / .txt) | Saved by your browser to your computer; nothing is sent anywhere | So you can keep the transcript |
 
 Your settings and API key are **not** synced to other devices.
 
-Google processes the data you send to the Gemini API under Google's own terms
-and privacy policy. On Gemini's free tier, Google may use submitted content to
-improve its products. See
-[Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms).
+Each provider processes the data you send it under its own terms and privacy
+policy. On free tiers, providers may use submitted content to improve their
+products. Google states this for the free Gemini API
+([Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms)), and
+Mistral for its free plan. Check the terms of the providers you enable.
 
 ## What StudHelper does NOT do
 
@@ -46,7 +48,8 @@ improve its products. See
 | `scripting` | Register the part of the content script that must run inside the YouTube page to see the player's caption request |
 | `sidePanel` | Show the concept map next to the video |
 | `storage` | Save your settings, API key and cached maps locally |
-| Host access to `https://generativelanguage.googleapis.com/*` | Send the transcript to Google Gemini when you press Build map |
+| Host access to `https://generativelanguage.googleapis.com/*` | Send the transcript to Google Gemini (or Gemma) when you press Build map |
+| Optional host access to `api.mistral.ai`, `api.groq.com`, `openrouter.ai`, `api.deepseek.com` | Requested only when you enable that provider in Settings; used only to send the transcript to it |
 
 ## Your control
 

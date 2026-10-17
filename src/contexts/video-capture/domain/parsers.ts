@@ -137,9 +137,13 @@ export function parseTranscriptRows(
  * Free text the user pasted. Understands the shapes people actually paste:
  *  - YouTube's transcript panel copied as-is: a timestamp line, then text lines
  *  - "0:12 text" / "[0:12] text" / "(0:12) text" on one line
+ *  - a subtitle file: SRT or WebVTT (e.g. the one StudHelper itself saves)
  *  - plain prose with no timestamps at all → `timed: false`
  */
 export function parseManualTranscript(input: string): { segments: Segment[]; timed: boolean } {
+  const cues = parseCueFile(input)
+  if (cues.length > 0) return { timed: true, segments: cues }
+
   const lines = input.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const inline = /^[[(]?((?:\d{1,2}:)?\d{1,2}:\d{2})[\])]?\s*[-–—:]?\s*(.*)$/
 
@@ -181,9 +185,58 @@ export function parseManualTranscript(input: string): { segments: Segment[]; tim
   return { timed: true, segments: withInferredDurations(rows.filter((r) => r.text)) }
 }
 
+const CUE_TIMING = /^(?:\d+\s+)?((?:\d+:)?\d{1,2}:\d{2}[.,]\d{1,3})\s*-->\s*((?:\d+:)?\d{1,2}:\d{2}[.,]\d{1,3})/
+
+/**
+ * SRT / WebVTT: blocks of an optional cue number, a "start --> end" line and
+ * text lines. Without this, a pasted .srt reached the model with every
+ * "00:02:30,000 --> 00:02:40,000" and cue number inside the text (~25% junk).
+ * YouTube's own VTT repeats the previous line at the top of each cue (rolling
+ * captions); a line equal to the one just kept is dropped. Empty = not a cue file.
+ */
+export function parseCueFile(input: string): Segment[] {
+  const lines = input.split(/\r?\n/)
+  const out: Segment[] = []
+  let lastLine = ''
+  for (let i = 0; i < lines.length; i++) {
+    const m = CUE_TIMING.exec(lines[i]!.trim())
+    if (!m) continue
+    const start = cueSeconds(m[1]!)
+    const end = cueSeconds(m[2]!)
+    const text: string[] = []
+    for (i++; i < lines.length && lines[i]!.trim() !== ''; i++) {
+      const line = normalizeSpace(lines[i]!.replace(/<[^>]*>/g, '')) // VTT inline tags / word timings
+      if (CUE_TIMING.exec(line)) {
+        i--
+        break
+      }
+      if (line && line !== lastLine) text.push(line)
+      if (line) lastLine = line
+    }
+    if (text.length > 0) out.push({ start, dur: Math.max(0, end - start), text: decodeEntities(text.join(' ')) })
+  }
+  return out
+}
+
+function cueSeconds(stamp: string): number {
+  const parts = stamp.replace(',', '.').split(':').map(Number)
+  return parts.reduce((acc, p) => acc * 60 + p, 0)
+}
+
 // ---------------------------------------------------------------------------
 // Pre-processing
 // ---------------------------------------------------------------------------
+
+/**
+ * Sound descriptions in captions — "[Music]", "[SQUEAKING]", "[INAUDIBLE]",
+ * "♪" — carry nothing for a concept map. Deliberately narrow: an all-caps
+ * word or a known ASR label, standing alone. "A[i]", "[3]" and "(CPU)" stay —
+ * lectures about arrays index things in brackets.
+ */
+const NON_SPEECH = /(?<![\w\]])\[(?:[A-Z][A-Z '-]{2,30}|Music|Applause|Laughter|Inaudible|Silence|Noise)\]|♪+/g
+export function stripNonSpeech(text: string): string {
+  return normalizeSpace(text.replace(NON_SPEECH, ' '))
+}
 
 export type MergeOptions = {
   /** Hard cap on a line's length; ASR captions have no punctuation to split on. */
@@ -210,7 +263,7 @@ export function mergeIntoLines(
   }
 
   for (const seg of segments) {
-    const text = normalizeSpace(seg.text)
+    const text = stripNonSpeech(seg.text)
     if (!text) continue
     if (cur !== null) {
       const c: { start: number; text: string; end: number } = cur

@@ -3,9 +3,15 @@
  * together (video-capture → concept-mapping → llm-gateway) and exposes one
  * `View` state machine to the React tree.
  *
- * Staleness: every resolve (tab switch, SPA navigation) bumps `gen` and aborts
- * the in-flight build. Each async step re-checks `gen` before touching state,
- * so a slow Gemini answer for video A can never paint over video B.
+ * Staleness: every resolve (tab switch, SPA navigation) bumps `gen`; each of
+ * its async steps re-checks `gen` before touching state.
+ *
+ * A build is a `job` that OUTLIVES resolves: switching tabs or videos while
+ * Groq paces a long lecture used to abort it, and coming back showed "Build
+ * map" again as if nothing had happened. Now the job keeps running, keeps its
+ * latest view, and paints only while its video is the one on screen; coming
+ * back to that video shows it again (or, once done, the cached map). Only
+ * Cancel or a new build stops it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -19,7 +25,13 @@ import {
   type BuildProgress,
   type ConceptMap,
 } from '../../contexts/concept-mapping'
-import { DEFAULT_GEMINI_MODEL, GeminiApiAdapter, LlmError, describeLlmError } from '../../contexts/llm-gateway'
+import {
+  AllProvidersFailedError,
+  LlmError,
+  describeLlmError,
+  describeLlmErrorShort,
+  type FallbackEvent,
+} from '../../contexts/llm-gateway'
 import {
   ChromeTranscriptCache,
   YouTubeTabClient,
@@ -34,6 +46,7 @@ import {
 } from '../../contexts/video-capture'
 import { chromeLocalStorage } from '../../shared/storage/kv'
 import { DEFAULT_SETTINGS, readSettings, subscribeSettings, type Settings } from '../../shared/storage/settings'
+import { buildChain, hasAnyProvider, providerHealth } from '../llmChain'
 
 export type VideoRef = { tabId: number; videoId: string; title: string; meta: VideoMeta | null }
 
@@ -43,7 +56,15 @@ export type View =
   | { kind: 'ready'; video: VideoRef }
   | { kind: 'capturing'; video: VideoRef }
   | { kind: 'no-captions'; video: VideoRef; attempts: CaptureAttempt[] }
-  | { kind: 'building'; video: VideoRef; progress: BuildProgress | null }
+  | {
+      kind: 'building'
+      video: VideoRef
+      progress: BuildProgress | null
+      /** "Gemini: daily quota used up — trying Mistral…" while the chain falls back. */
+      note?: string
+      /** A provider's per-minute budget is holding the next request until `until` (epoch ms). */
+      wait?: { provider: string; until: number }
+    }
   | {
       kind: 'map'
       video: VideoRef
@@ -63,11 +84,7 @@ export type BuildFailure = {
 }
 
 /** AI Studio's per-key view of active limits and usage (linked from Google's rate-limit docs). */
-const RATE_LIMIT_HELP = { label: 'See your limits in AI Studio', url: 'https://aistudio.google.com/rate-limit' }
-
-export function modelOf(settings: Settings): string {
-  return settings.model || DEFAULT_GEMINI_MODEL
-}
+const GOOGLE_LIMITS_HELP = { label: 'See your Gemini limits in AI Studio', url: 'https://aistudio.google.com/rate-limit' }
 
 export function usePanel() {
   const storage = useMemo(() => chromeLocalStorage(), [])
@@ -76,10 +93,13 @@ export function usePanel() {
 
   const [settings, setSettings] = useState<Settings | null>(null)
   const settingsRef = useRef<Settings>(DEFAULT_SETTINGS)
-  const [view, setView] = useState<View>({ kind: 'loading' })
+  const [view, setViewState] = useState<View>({ kind: 'loading' })
 
   const gen = useRef(0)
-  const abortRef = useRef<AbortController | null>(null)
+  /** The running build, if any. */
+  const job = useRef<{ videoId: string; ac: AbortController; view: View } | null>(null)
+  /** The video the panel currently shows; null while resolving or with no video. */
+  const shownVideo = useRef<string | null>(null)
   const clientRef = useRef<YouTubeTabClient | null>(null)
   /** The map last shown, so a failed Rebuild can put it straight back. */
   const shownMap = useRef<ConceptMap | null>(null)
@@ -99,6 +119,8 @@ export function usePanel() {
     const unsubscribe = subscribeSettings(storage, (s) => {
       settingsRef.current = s
       setSettings(s)
+      // A fixed key or a new model deserves a fresh chance in the chain.
+      providerHealth.clear()
     })
     return () => {
       cancelled = true
@@ -109,20 +131,19 @@ export function usePanel() {
   // --- what is the panel looking at? ---------------------------------------------
   const resolve = useCallback(async () => {
     const my = ++gen.current
-    abortRef.current?.abort()
-    abortRef.current = null
-    setView({ kind: 'loading' })
+    shownVideo.current = null
+    setViewState({ kind: 'loading' })
 
     const tabId = await activeTabId()
     if (my !== gen.current) return
     currentTabId.current = tabId
-    if (tabId === null) return setView({ kind: 'no-video' })
+    if (tabId === null) return setViewState({ kind: 'no-video' })
 
     const client = new YouTubeTabClient(tabId)
     clientRef.current = client
     const state = await client.getState()
     if (my !== gen.current) return
-    if (!state?.videoId) return setView({ kind: 'no-video' })
+    if (!state?.videoId) return setViewState({ kind: 'no-video' })
 
     const video: VideoRef = {
       tabId,
@@ -130,11 +151,17 @@ export function usePanel() {
       title: state.meta?.title || state.title,
       meta: state.meta,
     }
+    const running = job.current
+    if (running?.videoId === video.videoId) {
+      shownVideo.current = video.videoId
+      return setViewState(running.view)
+    }
     const cached = mapCache
-      ? await loadCachedConceptMap(video.videoId, { cache: mapCache, model: modelOf(settingsRef.current) })
+      ? await loadCachedConceptMap(video.videoId, { cache: mapCache })
       : null
     if (my !== gen.current) return
-    setView(cached ? { kind: 'map', video, map: cached, fromCache: true } : { kind: 'ready', video })
+    shownVideo.current = video.videoId
+    setViewState(cached ? { kind: 'map', video, map: cached, fromCache: true } : { kind: 'ready', video })
   }, [mapCache])
 
   const settingsLoaded = settings !== null
@@ -173,15 +200,14 @@ export function usePanel() {
    * bare error card appear.
    */
   const fail = useCallback(
-    async (video: VideoRef, failure: BuildFailure, stale: () => boolean) => {
+    async (video: VideoRef, failure: BuildFailure, post: (v: View) => void) => {
       const onScreen = shownMap.current?.videoId === video.videoId ? shownMap.current : null
       const previous =
         onScreen ??
         (mapCache
-          ? await loadFallbackConceptMap(video.videoId, { cache: mapCache, model: modelOf(settingsRef.current) })
+          ? await loadFallbackConceptMap(video.videoId, { cache: mapCache })
           : null)
-      if (stale()) return
-      setView(
+      post(
         previous
           ? { kind: 'map', video, map: previous, fromCache: true, error: failure }
           : { kind: 'error', video, ...failure },
@@ -193,24 +219,31 @@ export function usePanel() {
   // --- build ----------------------------------------------------------------------
   const build = useCallback(
     async (video: VideoRef, opts: { force?: boolean; pasted?: string } = {}) => {
-      const my = gen.current
-      const stale = () => my !== gen.current
       const s = settingsRef.current
-      if (!s.apiKey) {
-        await fail(video, { message: describeLlmError(new LlmError('no-key', '')), action: 'settings' }, stale)
-        return
+      job.current?.ac.abort()
+      const ac = new AbortController()
+      const mine = { videoId: video.videoId, ac, view: { kind: 'ready', video } as View }
+      job.current = mine
+      const stale = () => job.current !== mine
+      /** Remember the job's view; paint it only while its video is on screen. */
+      const setView = (v: View) => {
+        if (stale()) return
+        mine.view = v
+        if (shownVideo.current === video.videoId) setViewState(v)
       }
 
-      abortRef.current?.abort()
-      const ac = new AbortController()
-      abortRef.current = ac
+      if (!hasAnyProvider(s)) {
+        await fail(video, { message: 'Set up at least one AI provider (an API key) in Settings.', action: 'settings' }, setView)
+        job.current = null
+        return
+      }
 
       try {
         let transcript: Transcript | null
         if (opts.pasted !== undefined) {
           transcript = manualTranscript(video.videoId, opts.pasted)
           if (!transcript) {
-            await fail(video, { message: 'The pasted text is empty.', action: 'retry' }, stale)
+            await fail(video, { message: 'The pasted text is empty.', action: 'retry' }, setView)
             return
           }
           await transcriptCache?.put(transcript).catch(() => {})
@@ -226,7 +259,27 @@ export function usePanel() {
         }
 
         setView({ kind: 'building', video, progress: null })
-        const llm = new GeminiApiAdapter({ apiKey: s.apiKey, model: modelOf(s) })
+        let lastProgress: BuildProgress | null = null
+        let note: string | undefined
+        let wait: { provider: string; until: number } | undefined
+        const show = () => {
+          if (stale()) return
+          setView({ kind: 'building', video, progress: lastProgress, ...(note ? { note } : {}), ...(wait ? { wait } : {}) })
+        }
+        const llm = await buildChain(s, {
+          onFallback: (ev: FallbackEvent) => {
+            note = `${ev.from}: ${describeLlmErrorShort(ev.error)} — trying ${ev.to}…`
+            show()
+          },
+        })
+        if (!llm) {
+          await fail(
+            video,
+            { message: 'No AI provider is usable: allow its access or add a key in Settings.', action: 'settings' },
+            setView,
+          )
+          return
+        }
         const meta = video.meta
         const { map, fromCache } = await buildConceptMap(
           {
@@ -246,7 +299,9 @@ export function usePanel() {
             ...(mapCache ? { cache: mapCache } : {}),
             signal: ac.signal,
             onProgress: (progress) => {
-              if (!stale()) setView({ kind: 'building', video, progress })
+              lastProgress = progress
+              wait = progress.wait ? { provider: progress.wait.provider, until: Date.now() + progress.wait.ms } : undefined
+              show()
             },
           },
         )
@@ -254,16 +309,17 @@ export function usePanel() {
         setView({ kind: 'map', video, map, fromCache })
       } catch (err) {
         if (stale() || (err instanceof LlmError && err.kind === 'aborted')) return
-        await fail(video, failureOf(err), stale)
+        await fail(video, failureOf(err), setView)
       } finally {
-        if (abortRef.current === ac) abortRef.current = null
+        if (job.current === mine) job.current = null
       }
     },
     [fail, getTranscript, mapCache, transcriptCache],
   )
 
   const cancel = useCallback(() => {
-    abortRef.current?.abort()
+    job.current?.ac.abort()
+    job.current = null
     void resolve()
   }, [resolve])
 
@@ -277,17 +333,32 @@ export function usePanel() {
 
 /** Error → what the panel shows: message, the fixing action, a help link for limits. */
 function failureOf(err: unknown): BuildFailure {
+  if (err instanceof AllProvidersFailedError) {
+    const lines = err.failures.map((f) => `• ${f.provider}: ${describeLlmErrorShort(f.error)}`)
+    // Only short waits everywhere → retrying soon can work; otherwise the fix is in Settings.
+    const allTransient = err.failures.every((f) => f.error.kind === 'rate-limit' || f.error.kind === 'server')
+    const googleQuota = err.failures.some(
+      (f) => (f.provider === 'Gemini' || f.provider === 'Gemma') && /quota|rate/.test(f.error.kind),
+    )
+    return {
+      message: `No provider could build the map:\n${lines.join('\n')}`,
+      action: allTransient ? 'retry' : 'settings',
+      ...(googleQuota ? { help: GOOGLE_LIMITS_HELP } : {}),
+    }
+  }
   const message = errorText(err)
   if (!(err instanceof LlmError)) return { message, action: 'retry' }
+  const google = err.provider === undefined || err.provider === 'Gemini' || err.provider === 'Gemma'
   switch (err.kind) {
     case 'auth':
     case 'no-key':
+    case 'billing':
       return { message, action: 'settings' }
     case 'daily-quota':
-      // Retrying today is pointless; another model has its own quota.
-      return { message, action: 'settings', help: RATE_LIMIT_HELP }
+      // Retrying today is pointless; another model or provider has its own quota.
+      return { message, action: 'settings', ...(google ? { help: GOOGLE_LIMITS_HELP } : {}) }
     case 'rate-limit':
-      return { message, action: 'retry', help: RATE_LIMIT_HELP }
+      return { message, action: 'retry', ...(google ? { help: GOOGLE_LIMITS_HELP } : {}) }
     default:
       return { message, action: 'retry' }
   }

@@ -100,5 +100,5 @@ icon: ## Regenerate the placeholder icon (assets/icon.png)
 	node scripts/make-icon.mjs
 
 .PHONY: smoke-live
-smoke-live: node_modules ## Live Gemini round trip (needs GEMINI key in env/.env.local; spends quota)
+smoke-live: node_modules ## Live round trip per provider with a key in env/.env.local (spends quota)
 	npx vitest run --config vitest.live.config.ts

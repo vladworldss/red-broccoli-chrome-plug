@@ -5,9 +5,11 @@ import type { ConceptMap } from '../../src/contexts/concept-mapping'
 import { ChromeTranscriptCache } from '../../src/contexts/video-capture'
 import type { Transcript } from '../../src/contexts/video-capture'
 import { cacheUsage, clearCache } from '../../src/shared/storage/cacheAdmin'
+import { DEFAULT_ORDER, PROVIDERS } from '../../src/contexts/llm-gateway'
 import {
   DEFAULT_SETTINGS,
   SETTINGS_KEY,
+  SETTINGS_PROVIDER_ORDER,
   normalizeSettings,
   readSettings,
   subscribeSettings,
@@ -34,25 +36,45 @@ function conceptMap(over: Partial<ConceptMap> = {}): ConceptMap {
 }
 
 describe('settings', () => {
-  it('absent or corrupt → defaults; wrong types are rejected, not coerced', () => {
+  it('absent or corrupt → defaults (only Gemini enabled, default order)', () => {
     expect(normalizeSettings(undefined)).toEqual(DEFAULT_SETTINGS)
-    expect(normalizeSettings({ apiKey: 123, model: ' m ', outputLanguage: '' })).toEqual({
-      apiKey: '',
-      model: 'm',
-      outputLanguage: 'auto',
-    })
+    expect(normalizeSettings('junk')).toEqual(DEFAULT_SETTINGS)
+    expect(DEFAULT_SETTINGS.order[0]).toBe('gemini')
+    expect(Object.values(DEFAULT_SETTINGS.providers).filter((p) => p.enabled)).toHaveLength(1)
   })
 
-  it('partial writes preserve sibling fields', async () => {
+  it('migrates v1 {apiKey, model} into the Gemini provider — upgrading users keep their key', () => {
+    const s = normalizeSettings({ apiKey: ' AIza-key ', model: ' gemini-2.5-flash ', outputLanguage: 'Russian' })
+    expect(s.providers.gemini).toEqual({ enabled: true, apiKey: 'AIza-key', model: 'gemini-2.5-flash' })
+    expect(s.outputLanguage).toBe('Russian')
+    expect(s.order).toEqual([...SETTINGS_PROVIDER_ORDER])
+  })
+
+  it('v2: wrong types are rejected, unknown providers dropped, order de-duplicated and completed', () => {
+    const s = normalizeSettings({
+      providers: { groq: { enabled: 'yes', apiKey: 5, model: ' m ' }, evil: { enabled: true } },
+      order: ['groq', 'groq', 'nope', 'mistral'],
+      outputLanguage: '',
+    })
+    expect(s.providers.groq).toEqual({ enabled: false, apiKey: '', model: 'm' })
+    expect('evil' in s.providers).toBe(false)
+    expect(s.order).toEqual(['groq', 'mistral', 'gemini', 'openrouter', 'gemma', 'deepseek'])
+    expect(s.outputLanguage).toBe('auto')
+  })
+
+  it('patching one provider preserves the others', async () => {
     const s = fakeChromeStorage()
-    await writeSettings(s, { apiKey: 'k' })
-    await writeSettings(s, { model: 'm' })
-    expect(await readSettings(s)).toEqual({ apiKey: 'k', model: 'm', outputLanguage: 'auto' })
+    await writeSettings(s, { providers: { gemini: { apiKey: 'g' } } })
+    await writeSettings(s, { providers: { groq: { apiKey: 'q', enabled: true } }, order: ['groq', 'gemini'] })
+    const read = await readSettings(s)
+    expect(read.providers.gemini.apiKey).toBe('g')
+    expect(read.providers.groq).toEqual({ enabled: true, apiKey: 'q', model: '' })
+    expect(read.order.slice(0, 2)).toEqual(['groq', 'gemini'])
   })
 
   it('null storage → defaults, no throw', async () => {
     expect(await readSettings(null)).toEqual(DEFAULT_SETTINGS)
-    expect(await writeSettings(null, { apiKey: 'k' })).toMatchObject({ apiKey: 'k' })
+    expect((await writeSettings(null, { providers: { gemini: { apiKey: 'k' } } })).providers.gemini.apiKey).toBe('k')
   })
 
   it('subscribe filters on area and key; unsubscribe removes the listener', async () => {
@@ -62,10 +84,16 @@ describe('settings', () => {
     s.emit({ 'sh:map:x': { newValue: 1 } })
     s.emit({ [SETTINGS_KEY]: { newValue: { apiKey: 'z' } } }, 'sync')
     expect(cb).not.toHaveBeenCalled()
-    await writeSettings(s, { apiKey: 'k' })
-    expect(cb).toHaveBeenCalledWith({ apiKey: 'k', model: '', outputLanguage: 'auto' })
+    await writeSettings(s, { providers: { gemini: { apiKey: 'k' } } })
+    expect(cb).toHaveBeenCalledTimes(1)
+    expect(cb.mock.calls[0]![0].providers.gemini.apiKey).toBe('k')
     off()
     expect(s.listenerCount()).toBe(0)
+  })
+
+  it('the settings provider list mirrors the llm-gateway presets (shared code cannot import them)', () => {
+    expect([...SETTINGS_PROVIDER_ORDER]).toEqual(DEFAULT_ORDER)
+    expect([...SETTINGS_PROVIDER_ORDER].sort()).toEqual(Object.keys(PROVIDERS).sort())
   })
 })
 

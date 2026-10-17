@@ -71,7 +71,9 @@ describe('GeminiApiAdapter.generateJson', () => {
   })
 
   it('defaults to the rolling Flash alias and accepts a "models/" prefix', async () => {
-    expect(new GeminiApiAdapter({ apiKey: 'k' }).modelId).toBe('gemini-flash-latest')
+    const a = new GeminiApiAdapter({ apiKey: 'k' })
+    expect(a.model).toBe('gemini-flash-latest')
+    expect(a.modelId).toBe('gemini:gemini-flash-latest') // provider-qualified for the cache key
     const { fetch, calls } = scripted(json(200, okBody('{}')))
     await new GeminiApiAdapter({ apiKey: 'k', model: 'models/gemini-y', fetch }).generateJson(REQ)
     expect(calls[0]!.url).toContain('/models/gemini-y:generateContent')
@@ -187,6 +189,14 @@ describe('429 quota parsing', () => {
     expect(e.retryable).toBe(false)
   })
 
+  it('a REAL 429 captured from the live API (2026-10-16) is a daily quota', () => {
+    const e = classifyHttpError(429, body('gemini-429-daily-real.json'))
+    expect(e.kind).toBe('daily-quota')
+    expect(e.quota).toEqual({ scope: 'day', metric: 'requests', limit: 20, model: 'gemini-3.8-flash' })
+    expect(e.retryAfterMs).toBe(30_132_000)
+    expect(e.retryable).toBe(false)
+  })
+
   it('falls back to the message when details are missing', () => {
     const e = classifyHttpError(429, body('gemini-429-message-only.json'))
     expect(e.kind).toBe('daily-quota')
@@ -249,7 +259,7 @@ describe('describeLlmError for limits', () => {
     const text = describeLlmError(e, new Date('2026-10-16T19:00:00Z'))
     expect(text).toContain('Daily Gemini quota used up for gemini-2.5-flash (limit 250 requests/day)')
     expect(text).toContain('in about 12 h 0 min')
-    expect(text).toContain('another model in Settings')
+    expect(text).toContain('another model or provider in Settings')
   })
 
   it('per-minute: says which axis and how many seconds', () => {

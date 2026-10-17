@@ -18,7 +18,9 @@ YouTube tab
 Side panel (extension page): composition root, src/ui/sidepanel/usePanel.ts
  ├─ captureTranscript: cache → intercept → DOM panel → (user paste)
  ├─ buildConceptMap:   cache → chunk → extract → merge → relate → map → cache
- │     └─ LlmPort → GeminiApiAdapter ──HTTPS──▶ generativelanguage.googleapis.com
+ │     └─ LlmPort = FallbackLlm(order from Settings)
+ │          Gemini ─▶ Mistral ─▶ Groq ─▶ OpenRouter ─▶ Gemma ─▶ DeepSeek
+ │          (each: retries, timeout, pacing; on failure the next one, with a cooldown)
  └─ render: ConceptTree (list) | MindMap (markmap-view) ; Copy Markdown/Mermaid
 Service worker: only setPanelBehavior({openPanelOnActionClick: true})
 ```
@@ -34,7 +36,7 @@ process, so playback is never affected.
 |---|---|---|---|
 | **video-capture** | `Transcript`, `VideoMeta`; parsers for json3 / srv1 / srv3 / DOM rows / pasted text; `mergeIntoLines`, `parseChapters`, `chooseCaptionTrack` | `TranscriptProvider`, `TranscriptCache`; `captureTranscript`, `manualTranscript`, `transcriptToLines` | `pageHooks` (MAIN), `bridge` (ISOLATED), `transcriptPanel`, `selectors`, `YouTubeTabClient`, `ChromeTranscriptCache` |
 | **concept-mapping** (core) | `Concept`, `Relation`, `ConceptMap` (invariants in `createConceptMap`); `normalizeTerm`, `mergeConcepts`, `validateExtraction/Relations`, `toTree`, `toMarkdown`, `toMermaid`, `chunkLines` | `ConceptMapCache`; `buildConceptMap`, `loadCachedConceptMap`; `prompts.ts` + `PROMPT_VERSION` | `ChromeConceptMapCache` |
-| **llm-gateway** | `LlmError` taxonomy, `classifyHttpError` | `LlmPort`, `JsonSchema` | `GeminiApiAdapter` |
+| **llm-gateway** | `LlmError` taxonomy and `classifyHttpError` (Google and OpenAI error shapes), `PROVIDERS` presets, `RateLimiter`, `toStandardJsonSchema`, `extractJson` | `LlmPort`; `FallbackLlm` (provider chain, cooldowns, `InputTooLargeError`) | `GeminiApiAdapter` (Gemini, Gemma), `OpenAiCompatibleAdapter` (Mistral, Groq, OpenRouter, DeepSeek), `createAdapter`; shared retries and timeouts in `http.ts` |
 
 concept-mapping depends on llm-gateway only through `LlmPort`. It consumes
 `TranscriptLine` (`{start, text}`), its own type, so it never sees a YouTube

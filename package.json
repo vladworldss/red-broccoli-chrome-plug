@@ -1,8 +1,8 @@
 {
   "name": "studhelper",
   "displayName": "StudHelper: Lecture Concept Maps",
-  "version": "0.2.0",
-  "description": "Build a study concept map — key terms, definitions, prerequisites and timestamps — from the lecture video you are watching.",
+  "version": "0.3.0",
+  "description": "Build a study concept map \u2014 key terms, definitions, prerequisites and timestamps \u2014 from the lecture video you are watching.",
   "private": true,
   "scripts": {
     "dev": "PARCEL_WORKERS=0 plasmo dev",
@@ -35,6 +35,12 @@
     ],
     "host_permissions": [
       "https://generativelanguage.googleapis.com/*"
+    ],
+    "optional_host_permissions": [
+      "https://api.mistral.ai/*",
+      "https://api.groq.com/*",
+      "https://openrouter.ai/*",
+      "https://api.deepseek.com/*"
     ]
   }
 }

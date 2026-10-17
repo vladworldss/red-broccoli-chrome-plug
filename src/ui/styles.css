@@ -349,3 +349,16 @@ svg.sh-mindmap.markmap {
 .sh-status-err {
   color: var(--danger);
 }
+
+/* ---- provider list (options) ------------------------------------------- */
+.sh-providers {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sh-provider .sh-field {
+  margin-bottom: 8px;
+}

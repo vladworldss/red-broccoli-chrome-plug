@@ -6,7 +6,9 @@ import { extensionVersion } from '../extensionVersion'
 import { ConceptTree } from './ConceptTree'
 import { MindMap } from './MindMap'
 import { TranscriptDownload } from './TranscriptDownload'
-import { modelOf, usePanel, type BuildFailure, type VideoRef, type View } from './usePanel'
+import { describeModels } from '../../contexts/llm-gateway'
+import { hasAnyProvider } from '../llmChain'
+import { usePanel, type BuildFailure, type VideoRef, type View } from './usePanel'
 
 export function App() {
   const { view, settings, build, cancel, seek, getTranscript, refresh } = usePanel()
@@ -27,8 +29,7 @@ export function App() {
     [seek],
   )
 
-  const hasKey = !!settings?.apiKey
-  const currentModel = settings ? modelOf(settings) : ''
+  const hasKey = settings ? hasAnyProvider(settings) : false
 
   return (
     <div className="sh-app">
@@ -44,7 +45,6 @@ export function App() {
         <Body
           view={view}
           hasKey={hasKey}
-          currentModel={currentModel}
           onBuild={(v, opts) => void build(v, opts)}
           onCancel={cancel}
           onRefresh={() => void refresh()}
@@ -65,9 +65,8 @@ export function App() {
 
 type BodyProps = {
   view: View
+  /** At least one AI provider has a key. */
   hasKey: boolean
-  /** Model the next build would use; an older map shows a badge. */
-  currentModel: string
   onBuild: (video: VideoRef, opts?: { force?: boolean; pasted?: string }) => void
   onCancel: () => void
   onRefresh: () => void
@@ -76,7 +75,7 @@ type BodyProps = {
   getTranscript: (video: VideoRef) => Promise<CaptureResult>
 }
 
-function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek, onToast, getTranscript }: BodyProps) {
+function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, getTranscript }: BodyProps) {
   switch (view.kind) {
     case 'loading':
       return <Progress text="Looking for a video…" />
@@ -111,7 +110,7 @@ function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek
               Build map
             </button>
             <p className="sh-muted sh-small" style={{ marginBottom: 0 }}>
-              The transcript is sent to Google Gemini with your API key.
+              The transcript is sent to the AI provider you set up in Settings, with your own key.
             </p>
           </div>
           <TranscriptDownload video={view.video} getTranscript={getTranscript} onToast={onToast} />
@@ -144,7 +143,7 @@ function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek
       const p = view.progress
       const text =
         p === null
-          ? 'Sending to Gemini…'
+          ? 'Sending the transcript…'
           : p.step === 'extract'
             ? p.total > 1
               ? `Finding concepts (part ${p.current} of ${p.total})…`
@@ -154,6 +153,8 @@ function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek
         <>
           <VideoHeader video={view.video} />
           <Progress text={text} onCancel={onCancel} />
+          {view.note && <p className="sh-small sh-muted">{view.note}</p>}
+          {view.wait && <PacingNote provider={view.wait.provider} until={view.wait.until} />}
           {/* The transcript is already captured (and cached) by now, so this is
               instant and doesn't toggle captions while Gemini works. */}
           <TranscriptDownload video={view.video} getTranscript={getTranscript} onToast={onToast} />
@@ -167,7 +168,7 @@ function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek
           video={view.video}
           map={view.map}
           fromCache={view.fromCache}
-          outdated={!!currentModel && isOutdatedMap(view.map, currentModel)}
+          outdated={isOutdatedMap(view.map)}
           {...(view.error ? { error: view.error } : {})}
           onRebuild={() => onBuild(view.video, { force: true })}
           onSeek={onSeek}
@@ -182,7 +183,7 @@ function Body({ view, hasKey, currentModel, onBuild, onCancel, onRefresh, onSeek
           <VideoHeader video={view.video} />
           <div className="sh-card sh-error" role="alert">
             <strong>Something went wrong</strong>
-            <p>{view.message}</p>
+            <p style={{ whiteSpace: 'pre-line' }}>{view.message}</p>
             <div className="sh-row">
               {view.action === 'settings' ? (
                 <button className="sh-btn sh-btn-primary" onClick={() => chrome.runtime.openOptionsPage()}>
@@ -219,11 +220,31 @@ function VideoHeader({ video }: { video: VideoRef }) {
 function KeyNotice() {
   return (
     <div className="sh-card">
-      <strong>One-time setup:</strong> add a free Gemini API key.{' '}
+      <strong>One-time setup:</strong> add a free API key (Gemini, Mistral, Groq…).{' '}
       <button className="sh-btn-link" onClick={() => chrome.runtime.openOptionsPage()}>
         Open Settings
       </button>
     </div>
+  )
+}
+
+/**
+ * Free tiers with a small per-minute budget (Groq: 8k tokens) take a long
+ * lecture in parts, about a minute apart. Without a countdown that pause
+ * looks exactly like a hang.
+ */
+function PacingNote({ provider, until }: { provider: string; until: number }) {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [until])
+  const left = Math.ceil((until - now) / 1000)
+  if (left <= 0) return null
+  return (
+    <p className="sh-small sh-muted">
+      {provider}'s free tier allows only so much text per minute, so long lectures go in parts. Continuing in {left} s…
+    </p>
   )
 }
 
@@ -333,7 +354,7 @@ function MapView({
       {error && (
         <div className="sh-card sh-error" role="alert">
           <strong>Couldn't build a new map</strong>
-          <p>{error.message}</p>
+          <p style={{ whiteSpace: 'pre-line' }}>{error.message}</p>
           <p className="sh-small sh-muted">Showing the {outdated ? 'older' : 'previous'} saved map below.</p>
           <div className="sh-row">
             {error.action === 'settings' ? (
@@ -355,8 +376,11 @@ function MapView({
         <div className="sh-row sh-small sh-muted">
           <span>{map.concepts.length} concepts</span>
           {fromCache && <span className="sh-badge">cached</span>}
+          <span className="sh-badge" title={`Prompt ${map.promptVersion}`}>
+            {describeModels(map.model)}
+          </span>
           {outdated && (
-            <span className="sh-badge" title={`Built with ${map.model}, prompt ${map.promptVersion}. Rebuild for the current version.`}>
+            <span className="sh-badge" title={`Built with prompt ${map.promptVersion}. Rebuild for the current version.`}>
               older version
             </span>
           )}

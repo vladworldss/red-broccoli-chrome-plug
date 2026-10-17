@@ -31,11 +31,13 @@ Calculus: limits and derivatives
    loads. If that fails, it falls back to YouTube's "Show transcript" panel.
    If that fails too, you can paste the transcript yourself. Captions may
    switch on for a moment while they load.
-2. **Concepts.** The transcript goes to **Google Gemini** using **your own
-   API key**. Gemini makes two calls: one extracts the concepts, the other
-   links them.
+2. **Concepts.** The transcript goes to an AI provider using **your own API
+   key**. Two calls are made: one extracts the concepts, the other links
+   them. Supported providers are Gemini, Mistral, Groq, OpenRouter, Gemma and
+   DeepSeek, tried in the order you set. When one runs out of quota or fails,
+   the next one takes over automatically.
 3. **Cache.** The map is stored in your browser, so reopening the video
-   shows it instantly and makes no API calls. Use **Rebuild** to ask Gemini again.
+   shows it instantly and makes no API calls. Use **Rebuild** to build it again.
 
 There is no StudHelper server and no analytics. See
 [docs/store/privacy-policy.md](docs/store/privacy-policy.md).
@@ -49,7 +51,8 @@ make build          # → build/chrome-mv3-prod
 
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and pick `build/chrome-mv3-prod`.
-3. Click the extension icon → ⚙ (Settings), then paste a Gemini key from
+3. Click the extension icon → ⚙ (Settings), then add at least one key
+   (each provider row has a "Get a key ↗" link). For example, a Gemini key from
    [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
    Press **Test key**, then **Save**.
 4. Open a YouTube lecture and click the extension icon to open the side panel.
@@ -65,7 +68,7 @@ The panel header shows the loaded version.
 ```bash
 make dev            # Plasmo dev server with hot reload
 make check          # typecheck + tests (run before committing)
-make smoke-live     # real Gemini round trip; key from .env.local (see .env.example)
+make smoke-live     # real round trip per provider whose key is in .env.local (see .env.example)
 make store-zip      # hermetic prod build + manifest/secret/remote-code checks → dist/*.zip
 make help           # all targets
 ```
@@ -86,7 +89,7 @@ The code is split into three DDD bounded contexts. Details are in
 |---|---|
 | `src/contexts/video-capture` | YouTube: transcript capture (intercept → DOM panel → paste), metadata, seeking |
 | `src/contexts/concept-mapping` | **Core**: extract → merge → relate → tree, exporters, map cache |
-| `src/contexts/llm-gateway` | `LlmPort` and the Gemini adapter (retries, error taxonomy) |
+| `src/contexts/llm-gateway` | `LlmPort`; Gemini and OpenAI-compatible adapters; provider presets; fallback chain, pacing, error taxonomy |
 | `src/ui/` | Side panel and options pages (composition root) |
 
 ## Status

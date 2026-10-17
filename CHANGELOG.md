@@ -4,6 +4,49 @@ All notable changes to StudHelper are documented here.
 Versions follow the `version` field in [package.json](package.json), which is
 what the side panel header shows.
 
+## [0.3.0] — 2026-10-16
+
+### More AI providers, with automatic fallback
+
+Gemini's free tier only covers a handful of lectures a day. StudHelper can
+now use several AI providers, and when one runs out it moves on to the next
+by itself.
+
+- **Providers:** Gemini, Mistral, Groq, OpenRouter, Gemma and DeepSeek.
+  Add a free key for any of them in Settings; each row has a **Get a key ↗**
+  link and a **Test** button.
+  - Groq's free tier is the most generous (about 1,000 requests a day), and
+    it also offers free Qwen models.
+  - Gemma reuses your Gemini key with its own quota, but it's very slow.
+  - DeepSeek is paid, at about $0.003 per lecture.
+- **Fallback chain:** providers are tried in the order you set (↑ ↓ in
+  Settings). If one hits its limit or fails, the next one builds the map, and
+  the panel says so ("Gemini: daily quota used up — trying Mistral…"). A
+  provider that just ran out is skipped for a while instead of being asked
+  again for every lecture.
+- **The map says who built it.** A badge shows the provider and model, for
+  example "Groq · openai/gpt-oss-120b".
+- **When everyone fails,** the error lists each provider's reason on its own
+  line.
+- **Long lectures on small free tiers:** providers with a small per-minute
+  budget (Groq) get the transcript in parts, with pauses in between, instead
+  of failing. The panel counts down each pause ("Continuing in 34 s…"), so a
+  pause no longer looks like a hang. A one-hour lecture on Groq's free tier
+  takes about 2½ minutes.
+- **Switching tabs or videos no longer cancels a build.** It keeps running;
+  come back to the video to see its progress or the finished map.
+- **Pasting a subtitle file (.srt or .vtt)** into the paste box now works:
+  cue numbers and timing lines are no longer sent to the AI as text. Sound
+  labels like "[Music]" are left out too.
+- **A provider that hangs** is abandoned after a few minutes, and the next one
+  takes over.
+- **Your Gemini key and model carry over** from the previous version
+  automatically.
+
+Access to the extra providers is requested only when you enable them (Chrome
+asks once on **Save**). The transcript goes only to the first provider in
+your list that works, and to the next ones only if it fails.
+
 ## [0.2.0] — 2026-10-16
 
 ### Download the lecture's subtitles

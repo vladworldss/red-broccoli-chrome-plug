@@ -1,4 +1,4 @@
-import type { LlmPort } from '../../llm-gateway'
+import { InputTooLargeError, type LlmPort } from '../../llm-gateway'
 import {
   chunkLines,
   createConceptMap,
@@ -36,9 +36,14 @@ export type BuildConceptMapInput = {
   force?: boolean
 }
 
-export type BuildProgress =
+/**
+ * `wait` is set while a provider's per-minute budget holds the next request
+ * back ("Groq, 58 s") — the same step, re-emitted so the UI can explain it.
+ */
+export type BuildProgress = (
   | { step: 'extract'; current: number; total: number }
   | { step: 'relate' }
+) & { wait?: { provider: string; ms: number } }
 
 export type BuildConceptMapDeps = {
   llm: LlmPort
@@ -46,7 +51,10 @@ export type BuildConceptMapDeps = {
   clock?: () => string
   onProgress?: (p: BuildProgress) => void
   signal?: AbortSignal
-  /** Per-chunk character budget. ~120k chars ≈ 30k tokens: one chunk for most lectures. */
+  /**
+   * Per-chunk character budget. Default: the LLM's own `maxInputChars` — 120k
+   * (one chunk per lecture) for Gemini, ~14k for Groq's small per-minute budget.
+   */
   maxChunkChars?: number
 }
 
@@ -80,15 +88,10 @@ export async function buildConceptMap(
   input: BuildConceptMapInput,
   deps: BuildConceptMapDeps,
 ): Promise<BuildConceptMapResult> {
-  const key = {
-    videoId: input.videoId,
-    lang: input.lang,
-    promptVersion: PROMPT_VERSION,
-    model: deps.llm.modelId,
-  }
-
+  // Any provider's map at the current prompt version is a valid current map:
+  // which link of the fallback chain built it doesn't change what it means.
   if (deps.cache && !input.force) {
-    const cached = await deps.cache.get(key).catch(() => null)
+    const cached = await deps.cache.findLatest(input.videoId, PROMPT_VERSION).catch(() => null)
     if (cached) return { map: cached, fromCache: true }
   }
 
@@ -103,17 +106,39 @@ export async function buildConceptMap(
     ...(input.chapters ? { chapters: input.chapters } : {}),
   }
 
-  const chunks = chunkLines(lines, deps.maxChunkChars ?? 120_000, input.timed)
+  // A queue, not a fixed list: when the chain falls back to a provider with a
+  // smaller budget it throws InputTooLargeError, and the current chunk is split
+  // in place. Chunks already done are not redone.
+  let current: BuildProgress | null = null
+  const progress = (p: BuildProgress) => {
+    current = p
+    deps.onProgress?.(p)
+  }
+  const onWait = (wait: { provider: string; ms: number }) => {
+    if (current) deps.onProgress?.({ ...current, wait })
+  }
+
+  const chunks = chunkLines(lines, deps.maxChunkChars ?? deps.llm.maxInputChars, input.timed)
   const raws: RawConcept[] = []
   let topic = ''
   for (let i = 0; i < chunks.length; i++) {
-    deps.onProgress?.({ step: 'extract', current: i + 1, total: chunks.length })
-    const raw = await deps.llm.generateJson({
-      system: EXTRACTION_SYSTEM,
-      prompt: extractionPrompt(ctx, chunks[i]!, { index: i, total: chunks.length }),
-      schema: EXTRACTION_SCHEMA,
-      ...(deps.signal ? { signal: deps.signal } : {}),
-    })
+    progress({ step: 'extract', current: i + 1, total: chunks.length })
+    let raw: unknown
+    try {
+      raw = await deps.llm.generateJson({
+        system: EXTRACTION_SYSTEM,
+        prompt: extractionPrompt(ctx, chunks[i]!, { index: i, total: chunks.length }),
+        schema: EXTRACTION_SCHEMA,
+        ...(deps.signal ? { signal: deps.signal } : {}),
+        onWait,
+      })
+    } catch (err) {
+      const smaller = err instanceof InputTooLargeError ? chunkLines(chunks[i]!, err.maxChars, input.timed) : null
+      if (!smaller || smaller.length < 2) throw err
+      chunks.splice(i, 1, ...smaller)
+      i--
+      continue
+    }
     const extraction = validateExtraction(
       raw,
       input.durationSec !== undefined ? { durationSec: input.durationSec } : {},
@@ -127,7 +152,7 @@ export async function buildConceptMap(
 
   let relations: Relation[] = []
   if (concepts.length >= 2) {
-    deps.onProgress?.({ step: 'relate' })
+    progress({ step: 'relate' })
     const toRelate = [...concepts]
       .sort((a, b) => b.importance - a.importance)
       .slice(0, MAX_CONCEPTS_TO_RELATE)
@@ -137,6 +162,7 @@ export async function buildConceptMap(
         prompt: relationsPrompt(ctx, topic, toRelate),
         schema: RELATIONS_SCHEMA,
         ...(deps.signal ? { signal: deps.signal } : {}),
+        onWait,
       })
       relations = validateRelations(raw, concepts)
     } catch (err) {
@@ -145,7 +171,11 @@ export async function buildConceptMap(
   }
 
   const map = createConceptMap({
-    ...key,
+    videoId: input.videoId,
+    lang: input.lang,
+    promptVersion: PROMPT_VERSION,
+    // Read AFTER the calls: with a fallback chain it names who actually answered.
+    model: deps.llm.modelId,
     title: input.title,
     topic,
     createdAt: (deps.clock ?? (() => new Date().toISOString()))(),
@@ -158,31 +188,37 @@ export async function buildConceptMap(
   return { map, fromCache: false }
 }
 
-/** Cache lookup for the panel's "open a video" path — never calls the LLM. */
+/**
+ * Cache lookup for the panel's "open a video" path — never calls the LLM.
+ * Any provider/model counts as long as the prompt version is current.
+ */
 export async function loadCachedConceptMap(
   videoId: string,
-  deps: { cache: ConceptMapCache; model: string },
+  deps: { cache: ConceptMapCache },
 ): Promise<ConceptMap | null> {
-  return deps.cache.findLatest(videoId, PROMPT_VERSION, deps.model).catch(() => null)
+  return deps.cache.findLatest(videoId, PROMPT_VERSION).catch(() => null)
 }
 
 /**
- * What to show when a build fails: the map for the current prompt version and
- * model if one is cached, otherwise the newest map of ANY version. Null when
- * the video has never had a map.
+ * What to show when a build fails: the current-version map if one is cached,
+ * otherwise the newest map of ANY prompt version. Null when the video has
+ * never had a map.
  */
 export async function loadFallbackConceptMap(
   videoId: string,
-  deps: { cache: ConceptMapCache; model: string },
+  deps: { cache: ConceptMapCache },
 ): Promise<ConceptMap | null> {
   const current = await loadCachedConceptMap(videoId, deps)
   if (current) return current
   return deps.cache.findLatestAny(videoId).catch(() => null)
 }
 
-/** True when a map was built with another model or prompt version than now. */
-export function isOutdatedMap(map: ConceptMap, model: string): boolean {
-  return map.promptVersion !== PROMPT_VERSION || map.model !== model
+/**
+ * True when a map was built with an older prompt version. Which provider or
+ * model built it is shown as information, not as "outdated".
+ */
+export function isOutdatedMap(map: ConceptMap): boolean {
+  return map.promptVersion !== PROMPT_VERSION
 }
 
 function isSchemaProblem(err: unknown): boolean {

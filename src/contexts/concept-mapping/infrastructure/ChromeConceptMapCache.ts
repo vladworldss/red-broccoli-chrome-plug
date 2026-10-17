@@ -18,8 +18,11 @@ export class ChromeConceptMapCache implements ConceptMapCache {
     return asConceptMap(bag[k])
   }
 
-  async findLatest(videoId: string, promptVersion: string, model: string): Promise<ConceptMap | null> {
-    return this.newestOf(videoId, (e) => e.promptVersion === promptVersion && e.model === model)
+  async findLatest(videoId: string, promptVersion: string, model?: string): Promise<ConceptMap | null> {
+    return this.newestOf(
+      videoId,
+      (e) => e.promptVersion === promptVersion && (model === undefined || e.model === model),
+    )
   }
 
   async findLatestAny(videoId: string): Promise<ConceptMap | null> {

@@ -1,4 +1,4 @@
-# Chrome Web Store listing — StudHelper 0.2.0
+# Chrome Web Store listing — StudHelper 0.3.0
 
 ## Basics
 
@@ -34,10 +34,11 @@ notes, never as "download from YouTube".
 >
 > Maps are saved in your browser, so reopening a lecture shows its map instantly.
 >
-> **Needs a free Google Gemini API key.** StudHelper uses Google Gemini to find
-> the concepts. Get a free key at aistudio.google.com and paste it into
-> Settings. The video's title and transcript are sent to Gemini only when you
-> press Build map. StudHelper has no server and collects no analytics.
+> **Needs a free API key from an AI provider.** StudHelper works with Google
+> Gemini, Mistral, Groq, OpenRouter or DeepSeek. Add one or more keys in
+> Settings; when one provider runs out of free quota, the next one takes
+> over. The video's title and transcript are sent to the provider only when
+> you press Build map. StudHelper has no server and collects no analytics.
 >
 > Works with videos that have captions (auto-generated captions are fine). If
 > captions can't be read automatically, you can paste the transcript yourself.
@@ -59,7 +60,8 @@ notes, never as "download from YouTube".
 | `sidePanel` | The concept map is displayed in Chrome's side panel next to the video. |
 | `storage` | Stores the user's settings, their Gemini API key, and cached maps locally. |
 | `scripting` | Registers the content script that must run in the YouTube page's main world at document start to read the captions the player loads. Without it, captions can't be read. |
-| Host `https://generativelanguage.googleapis.com/*` | Sends the lecture transcript to Google Gemini with the user's own key, when they press Build map. |
+| Host `https://generativelanguage.googleapis.com/*` | Sends the lecture transcript to Google Gemini (the default provider) with the user's own key, when they press Build map. |
+| Optional hosts `https://api.mistral.ai/*`, `https://api.groq.com/*`, `https://openrouter.ai/*`, `https://api.deepseek.com/*` | Requested at runtime only for the AI providers the user enables in Settings; used only to send the transcript to that provider with the user's own key. |
 | Content script on `https://www.youtube.com/*` | Reads the captions or transcript of the video being watched and seeks the video when the user clicks a timestamp. |
 
 ## Assets still to make

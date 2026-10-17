@@ -147,6 +147,30 @@ describe('parseManualTranscript', () => {
     ])
   })
 
+  it('a pasted .srt keeps cue times and drops numbers and timing lines', () => {
+    const srt = '1\n00:00:01,500 --> 00:00:04,000\nToday: arrays.\n\n2\n00:02:30,000 --> 00:02:40,000\nA[i] is O(1)\nin the word RAM.\n'
+    const { segments, timed } = parseManualTranscript(srt)
+    expect(timed).toBe(true)
+    expect(segments).toEqual([
+      { start: 1.5, dur: 2.5, text: 'Today: arrays.' },
+      { start: 150, dur: 10, text: 'A[i] is O(1) in the word RAM.' },
+    ])
+  })
+
+  it('YouTube WebVTT: inline tags removed, the rolling repeat of the previous line dropped', () => {
+    const vtt = [
+      'WEBVTT',
+      '',
+      '00:00:00.000 --> 00:00:02.000',
+      'today<00:00:00.500><c> we</c><c> talk</c>',
+      '',
+      '00:00:02.000 --> 00:00:04.000',
+      'today we talk',
+      'about limits',
+    ].join('\n')
+    expect(parseManualTranscript(vtt).segments.map((s) => s.text)).toEqual(['today we talk', 'about limits'])
+  })
+
   it('plain prose → untimed', () => {
     const { segments, timed } = parseManualTranscript('Limits are…\n\nDerivatives are…')
     expect(timed).toBe(false)
@@ -157,6 +181,13 @@ describe('parseManualTranscript', () => {
 
 describe('mergeIntoLines', () => {
   const seg = (start: number, text: string, dur = 1) => ({ start, dur, text })
+  it('sound labels go; array indexing and acronyms stay', () => {
+    expect(mergeIntoLines([seg(0, '[SQUEAKING] so A[i] [Music] costs O(1) (CPU) ♪♪')]).map((l) => l.text)).toEqual([
+      'so A[i] costs O(1) (CPU)',
+    ])
+    expect(mergeIntoLines([seg(0, '[Music]')])).toEqual([])
+  })
+
 
   it('joins fragments until sentence punctuation', () => {
     expect(mergeIntoLines([seg(0, 'A limit is'), seg(1, 'where it goes.'), seg(2, 'Next')])).toEqual([

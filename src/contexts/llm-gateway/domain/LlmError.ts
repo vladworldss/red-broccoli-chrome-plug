@@ -1,25 +1,27 @@
 /**
  * Provider-neutral failure taxonomy. Each kind maps to one thing the user can
- * do about it (fix the key, wait, retry, shorten the input), which is all the
- * UI needs to know.
+ * do about it (fix the key, wait, retry, shorten the input, switch provider),
+ * which is all the UI — and the fallback chain — needs to know.
  */
 export type LlmErrorKind =
   | 'no-key'
   | 'auth'
+  | 'billing'
   | 'rate-limit'
   | 'daily-quota'
+  | 'too-large'
   | 'bad-request'
   | 'server'
   | 'network'
+  | 'timeout'
   | 'schema'
   | 'blocked'
   | 'aborted'
 
 /**
- * Which quota a 429 tripped, as far as the response says. Gemini limits are
- * per project and per model, on three axes: requests/minute, tokens/minute,
- * requests/day. There is no API to read the remaining quota up front — a 429
- * is the only place this information ever appears.
+ * Which quota a 429 tripped, as far as the response says. No provider offers
+ * an API to read the remaining quota up front — a 429 is the only place this
+ * information ever appears.
  */
 export type QuotaInfo = {
   scope: 'minute' | 'day' | 'unknown'
@@ -29,52 +31,73 @@ export type QuotaInfo = {
   model?: string
 }
 
+export type LlmErrorOptions = {
+  status?: number
+  retryAfterMs?: number
+  quota?: QuotaInfo
+  /** Human label of the provider that failed ("Gemini", "Groq"…). */
+  provider?: string
+}
+
 export class LlmError extends Error {
   readonly kind: LlmErrorKind
   readonly status: number | undefined
-  /** Server-suggested wait before retrying (429 RetryInfo), if any. */
+  /** Server-suggested wait before retrying (Retry-After / RetryInfo), if any. */
   readonly retryAfterMs: number | undefined
   readonly quota: QuotaInfo | undefined
+  /** Set by the adapter that threw; read by messages and the fallback chain. */
+  provider: string | undefined
 
-  constructor(
-    kind: LlmErrorKind,
-    message: string,
-    opts: { status?: number; retryAfterMs?: number; quota?: QuotaInfo } = {},
-  ) {
+  constructor(kind: LlmErrorKind, message: string, opts: LlmErrorOptions = {}) {
     super(message)
     this.name = 'LlmError'
     this.kind = kind
     this.status = opts.status
     this.retryAfterMs = opts.retryAfterMs
     this.quota = opts.quota
+    this.provider = opts.provider
   }
 
   /**
-   * Transient: worth retrying the same request after a pause. `daily-quota`
-   * is deliberately NOT here — it resets at midnight Pacific, so every retry
-   * would only burn time.
+   * Transient: worth retrying the SAME request at the SAME provider after a
+   * pause. `daily-quota` (resets in hours), `timeout` (a slow provider stays
+   * slow) and `too-large` (the same input stays too large) are deliberately
+   * not here — the fallback chain moves on instead.
    */
   get retryable(): boolean {
     return this.kind === 'rate-limit' || this.kind === 'server' || this.kind === 'network'
   }
 }
 
+/** The slice of `Headers` we read; plain objects work in tests. */
+export type HeaderLike = { get(name: string): string | null }
+
 /**
- * HTTP status + parsed error body → LlmError. Google returns 400 (not 401) with
- * reason API_KEY_INVALID for a bad key, so the body is inspected too.
+ * HTTP status + parsed error body (+ headers) → LlmError. Understands both
+ * Google's shape (`{error:{message, details:[QuotaFailure, RetryInfo]}}`) and
+ * the OpenAI-compatible ones (`{error:{message,code}}`, Mistral's top-level
+ * `{message}`), plus the `Retry-After` header.
+ *
+ * Google returns 400 (not 401) with API_KEY_INVALID for a bad key, and Groq
+ * returns 413 for a single request larger than its per-minute token budget,
+ * so bodies are inspected, not just statuses.
  */
-export function classifyHttpError(status: number, body: unknown): LlmError {
+export function classifyHttpError(status: number, body: unknown, headers?: HeaderLike): LlmError {
   const err = isRecord(body) && isRecord(body.error) ? body.error : null
-  const message = err && typeof err.message === 'string' ? err.message : `HTTP ${status}`
+  const message = messageOf(body, err) ?? `HTTP ${status}`
   const blob = JSON.stringify(body ?? '')
 
   if (status === 400 && /API_KEY_INVALID|API key not valid/i.test(blob)) {
     return new LlmError('auth', message, { status })
   }
   if (status === 401 || status === 403) return new LlmError('auth', message, { status })
+  if (status === 402) return new LlmError('billing', message, { status })
+  if (status === 413 || (status === 400 && TOO_LARGE.test(message))) {
+    return new LlmError('too-large', message, { status })
+  }
   if (status === 429) {
     const quota = quotaInfo(err, message)
-    const retryAfterMs = retryDelayMs(err, message)
+    const retryAfterMs = retryAfterHeaderMs(headers) ?? retryDelayMs(err, message)
     return new LlmError(quota.scope === 'day' ? 'daily-quota' : 'rate-limit', message, {
       status,
       quota,
@@ -86,44 +109,96 @@ export function classifyHttpError(status: number, body: unknown): LlmError {
   return new LlmError('bad-request', message, { status })
 }
 
+const TOO_LARGE = /context length|context window|too long|too large|maximum (?:context|input)|reduce the length/i
+
+/** Providers whose daily quotas reset at midnight Pacific (Google's). */
+const PACIFIC_RESET = new Set(['Gemini', 'Gemma'])
+
 /** Short, actionable text for the side panel. `now` is injectable for tests. */
 export function describeLlmError(err: LlmError, now: Date = new Date()): string {
+  const p = err.provider ?? 'Gemini'
   switch (err.kind) {
     case 'no-key':
-      return 'Add your Gemini API key in Settings first.'
+      return `Add your ${p} API key in Settings first.`
     case 'auth':
-      return 'Gemini rejected the API key. Check it in Settings.'
+      return `${p} rejected the API key. Check it in Settings.`
+    case 'billing':
+      return `${p} says the account has no credit left. Top it up or use another provider.`
     case 'rate-limit': {
-      const what = err.quota?.metric === 'tokens' ? ' (tokens per minute)' : err.quota?.scope === 'minute' ? ' (requests per minute)' : ''
+      const what =
+        err.quota?.metric === 'tokens'
+          ? ' (tokens per minute)'
+          : err.quota?.scope === 'minute'
+            ? ' (requests per minute)'
+            : ''
       const wait = err.retryAfterMs !== undefined ? `in ${Math.max(1, Math.ceil(err.retryAfterMs / 1000))} s` : 'in a minute'
-      return `Gemini rate limit reached${what}. Try again ${wait}.`
+      return `${p} rate limit reached${what}. Try again ${wait}.`
     }
     case 'daily-quota': {
       const model = err.quota?.model ? ` for ${err.quota.model}` : ''
       const unit = err.quota?.metric === 'tokens' ? 'tokens' : 'requests'
       const limit = err.quota?.limit !== undefined ? ` (limit ${err.quota.limit} ${unit}/day)` : ''
-      return (
-        `Daily Gemini quota used up${model}${limit}. ` +
-        `It resets at midnight Pacific time — in about ${formatDuration(msUntilPacificMidnight(now))}. ` +
-        'You can pick another model in Settings.'
-      )
+      const reset = PACIFIC_RESET.has(p)
+        ? ` It resets at midnight Pacific time — in about ${formatDuration(msUntilPacificMidnight(now))}.`
+        : ''
+      return `Daily ${p} quota used up${model}${limit}.${reset} You can pick another model or provider in Settings.`
     }
+    case 'too-large':
+      return `The transcript is too long for ${p} in one request.`
     case 'bad-request':
       return err.status === 404
-        ? 'Unknown model name. Check the model in Settings.'
-        : `Gemini rejected the request: ${err.message}`
+        ? `Unknown model name for ${p}. Check the model in Settings.`
+        : `${p} rejected the request: ${err.message}`
     case 'server':
       return err.status === 503
-        ? 'Gemini is overloaded right now. Try again in a minute, or choose another model in Settings.'
-        : 'Gemini is having trouble right now. Try again shortly.'
+        ? `${p} is overloaded right now. Try again in a minute, or choose another model in Settings.`
+        : `${p} is having trouble right now. Try again shortly.`
     case 'network':
-      return 'Could not reach Gemini. Check your connection.'
+      return `Could not reach ${p}. Check your connection.`
+    case 'timeout':
+      return `${p} didn't answer in time.`
     case 'schema':
-      return 'Gemini returned an unexpected answer. Try Rebuild.'
+      return `${p} returned an unexpected answer. Try Rebuild.`
     case 'blocked':
-      return 'Gemini declined to process this transcript.'
+      return `${p} declined to process this transcript.`
     case 'aborted':
       return 'Cancelled.'
+  }
+}
+
+/** One short clause per provider, for the "all providers failed" list. */
+export function describeLlmErrorShort(err: LlmError, now: Date = new Date()): string {
+  switch (err.kind) {
+    case 'no-key':
+      return 'no API key'
+    case 'auth':
+      return 'API key rejected'
+    case 'billing':
+      return 'no credit left'
+    case 'rate-limit':
+      return err.retryAfterMs !== undefined
+        ? `rate limit — try in ${Math.max(1, Math.ceil(err.retryAfterMs / 1000))} s`
+        : 'rate limit'
+    case 'daily-quota':
+      return PACIFIC_RESET.has(err.provider ?? 'Gemini')
+        ? `daily quota used up (resets in ${formatDuration(msUntilPacificMidnight(now))})`
+        : 'daily quota used up'
+    case 'too-large':
+      return 'transcript too long for one request'
+    case 'bad-request':
+      return err.status === 404 ? 'unknown model' : 'request rejected'
+    case 'server':
+      return err.status === 503 ? 'overloaded' : 'server error'
+    case 'network':
+      return 'unreachable'
+    case 'timeout':
+      return 'timed out'
+    case 'schema':
+      return 'unexpected answer'
+    case 'blocked':
+      return 'declined the content'
+    case 'aborted':
+      return 'cancelled'
   }
 }
 
@@ -131,13 +206,23 @@ export function describeLlmError(err: LlmError, now: Date = new Date()): string 
 // 429 body parsing
 // ---------------------------------------------------------------------------
 
+function messageOf(body: unknown, err: Record<string, unknown> | null): string | undefined {
+  if (err && typeof err.message === 'string') return err.message
+  if (isRecord(body)) {
+    if (typeof body.message === 'string') return body.message // Mistral
+    if (typeof body.detail === 'string') return body.detail
+    if (typeof body.error === 'string') return body.error
+  }
+  return undefined
+}
+
 /**
  * google.rpc.QuotaFailure:
  *   details: [{ "@type": "…QuotaFailure", violations: [{
  *     quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
  *     quotaValue: "250", quotaDimensions: { model: "gemini-2.5-flash" } }] }]
- * Falls back to the human message ("…per day…", "limit: 250, model: …") when
- * the structured details are missing.
+ * Otherwise the human message, e.g. Groq's "…on tokens per day (TPD): Limit
+ * 100000…" or OpenRouter's "…free-models-per-day…".
  */
 function quotaInfo(err: Record<string, unknown> | null, message: string): QuotaInfo {
   const details = err && Array.isArray(err.details) ? err.details : []
@@ -156,7 +241,7 @@ function quotaInfo(err: Record<string, unknown> | null, message: string): QuotaI
     }
   }
 
-  const limit = /limit:\s*(\d+)/i.exec(message)?.[1]
+  const limit = /limit:?\s*(\d+)/i.exec(message)?.[1]
   // Dots only BETWEEN parts: keeps "gemini-2.5-flash", drops a sentence's final period.
   const model = /model:\s*([\w-]+(?:\.[\w-]+)*)/i.exec(message)?.[1]
   return {
@@ -168,20 +253,30 @@ function quotaInfo(err: Record<string, unknown> | null, message: string): QuotaI
 }
 
 function scopeOf(text: string): QuotaInfo['scope'] {
-  if (/per\s*day|PerDay|daily/i.test(text)) return 'day'
-  if (/per\s*minute|PerMinute/i.test(text)) return 'minute'
+  if (/per[\s-]*day|PerDay|daily|\((?:TPD|RPD)\)/i.test(text)) return 'day'
+  if (/per[\s-]*minute|PerMinute|\((?:TPM|RPM)\)/i.test(text)) return 'minute'
   return 'unknown'
 }
 
 function metricOf(text: string): QuotaInfo['metric'] {
-  if (/token/i.test(text)) return 'tokens'
-  if (/request/i.test(text)) return 'requests'
+  if (/token|\(TP[MD]\)/i.test(text)) return 'tokens'
+  if (/request|\(RP[MD]\)/i.test(text)) return 'requests'
   return 'unknown'
 }
 
+/** `Retry-After: 17` (seconds) or an HTTP date. */
+function retryAfterHeaderMs(headers: HeaderLike | undefined): number | undefined {
+  const raw = headers?.get('retry-after')
+  if (!raw) return undefined
+  const secs = Number(raw)
+  if (Number.isFinite(secs)) return Math.max(0, Math.round(secs * 1000))
+  const at = Date.parse(raw)
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined
+}
+
 /**
- * google.rpc.RetryInfo `retryDelay: "41s"`, or the message's
- * "Please retry in 41.6s." when the details are missing.
+ * google.rpc.RetryInfo `retryDelay: "41s"`, or the message's "Please retry in
+ * 41.6s." / Groq's "Please try again in 1m26.4s".
  */
 function retryDelayMs(err: Record<string, unknown> | null, message: string): number | undefined {
   const details = err && Array.isArray(err.details) ? err.details : []
@@ -190,12 +285,12 @@ function retryDelayMs(err: Record<string, unknown> | null, message: string): num
     const m = /^(\d+(?:\.\d+)?)s$/.exec(d.retryDelay)
     if (m) return Math.round(Number(m[1]) * 1000)
   }
-  const m = /retry in (\d+(?:\.\d+)?)\s*s/i.exec(message)
-  return m ? Math.round(Number(m[1]) * 1000) : undefined
+  const m = /(?:retry|try again) in\s*(?:(\d+)m)?\s*(\d+(?:\.\d+)?)\s*s/i.exec(message)
+  return m ? Math.round((Number(m[1] ?? 0) * 60 + Number(m[2])) * 1000) : undefined
 }
 
 // ---------------------------------------------------------------------------
-// Daily reset time
+// Daily reset time (Google)
 // ---------------------------------------------------------------------------
 
 const PACIFIC = new Intl.DateTimeFormat('en-US', {

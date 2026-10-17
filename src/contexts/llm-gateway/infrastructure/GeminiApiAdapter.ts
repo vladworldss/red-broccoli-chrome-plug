@@ -1,90 +1,93 @@
 import type { LlmPort, LlmRequest } from '../application/LlmPort'
-import { classifyHttpError, LlmError } from '../domain/LlmError'
+import { extractJson } from '../domain/extractJson'
+import { LlmError, classifyHttpError } from '../domain/LlmError'
+import { PROVIDERS, qualifiedModel, type ProviderPreset } from '../domain/providers'
+import { RateLimiter, estimateTokens, sharedLimiter } from '../domain/RateLimiter'
+import { schemaForPrompt } from '../domain/schemaConversion'
+import {
+  abortableSleep,
+  attemptSignal,
+  jsonInstruction,
+  runWithRetries,
+  safeJson,
+  tag,
+  toLlmError,
+  type FetchLike,
+  type SleepFn,
+} from './http'
 
-export const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
+export type { FetchLike } from './http'
+
+export const GEMINI_API_BASE = PROVIDERS.gemini.baseUrl
 
 /**
  * Google's rolling alias for the current Flash model. Used as the default so a
  * model retirement doesn't silently break every install; users can pin a
  * specific model in Settings.
  */
-export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest'
-
-/** Longest server-requested pause we sit through behind a spinner. */
-const MAX_SILENT_WAIT_MS = 30_000
-
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
+export const DEFAULT_GEMINI_MODEL = PROVIDERS.gemini.defaultModel
 
 export type GeminiApiAdapterOptions = {
   apiKey: string
   model?: string
+  /** `PROVIDERS.gemini` (default) or `PROVIDERS.gemma` — same API, different JSON mode. */
+  preset?: ProviderPreset
   fetch?: FetchLike
   /** Injectable for tests; must reject with an AbortError-like when aborted. */
-  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>
+  sleep?: SleepFn
   /** Total attempts for transient failures (429/5xx/network). */
   maxAttempts?: number
+  /** Client-side pacing; default: the page-wide limiter for this provider. Null disables. */
+  limiter?: RateLimiter | null
 }
 
 /**
- * Gemini `generateContent` with JSON-schema output.
- *
- * Retry policy:
- *  - 429 / 5xx / network: up to `maxAttempts` total, waiting the server's
- *    RetryInfo delay or exponential backoff 2s, 4s, 8s, 16s. The free tier
- *    answers 503 "high demand" in bursts that usually clear within ~30s, so
- *    the budget is sized for that; the panel offers Cancel meanwhile.
- *  - 429 asking for a wait longer than MAX_SILENT_WAIT_MS: thrown at once, so
- *    the UI can say "try again in N s" instead of spinning and failing again.
- *  - daily quota (429 with a PerDay QuotaFailure): never retried — it resets
- *    at midnight Pacific, so retries would only burn time.
- *  - unparseable/truncated JSON: exactly one more attempt.
- *  - auth / bad request / blocked: never retried — the same request will fail
- *    the same way.
+ * Gemini API `generateContent` (Gemini and Gemma models).
+ *  - Gemini: JSON-schema output via `responseSchema`, instructions via
+ *    `systemInstruction`.
+ *  - Gemma: neither is accepted reliably, so instructions and schema go into
+ *    the prompt and the JSON is cut out of the answer.
  *
  * The key travels in the `x-goog-api-key` header, never in the URL, so it
- * cannot end up in logs or the Referer of anything.
+ * cannot end up in logs or the Referer of anything. Retries, timeouts and
+ * error tagging follow the shared policy in http.ts.
  */
 export class GeminiApiAdapter implements LlmPort {
+  readonly model: string
   readonly modelId: string
+  readonly maxInputChars: number
+  private readonly preset: ProviderPreset
   private readonly apiKey: string
   private readonly fetchImpl: FetchLike
-  private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>
+  private readonly sleep: SleepFn
   private readonly maxAttempts: number
+  private readonly limiter: RateLimiter | null
 
   constructor(opts: GeminiApiAdapterOptions) {
+    this.preset = opts.preset ?? PROVIDERS.gemini
     this.apiKey = opts.apiKey.trim()
-    this.modelId = (opts.model ?? '').trim() || DEFAULT_GEMINI_MODEL
+    this.model = (opts.model ?? '').trim().replace(/^models\//, '') || this.preset.defaultModel
+    this.modelId = qualifiedModel(this.preset.id, this.model)
+    this.maxInputChars = this.preset.maxInputChars
     this.fetchImpl = opts.fetch ?? ((input, init) => globalThis.fetch(input, init))
     this.sleep = opts.sleep ?? abortableSleep
     this.maxAttempts = Math.max(1, opts.maxAttempts ?? 5)
+    this.limiter =
+      opts.limiter !== undefined
+        ? opts.limiter
+        : this.preset.limits
+          ? sharedLimiter(this.modelId, this.preset.limits)
+          : null
   }
 
   async generateJson(req: LlmRequest): Promise<unknown> {
-    if (!this.apiKey) throw new LlmError('no-key', 'No Gemini API key configured')
-
-    let schemaRetried = false
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const text = await this.callOnce(req)
-        try {
-          return JSON.parse(text)
-        } catch {
-          throw new LlmError('schema', 'Gemini returned malformed JSON')
-        }
-      } catch (err) {
-        const e = toLlmError(err)
-        if (e.kind === 'schema' && !schemaRetried) {
-          schemaRetried = true
-          continue
-        }
-        if (!e.retryable || attempt >= this.maxAttempts) throw e
-        if (e.retryAfterMs !== undefined && e.retryAfterMs > MAX_SILENT_WAIT_MS) throw e
-        const backoff = 2000 * 2 ** (attempt - 1)
-        await this.sleep(e.retryAfterMs ?? backoff, req.signal).catch(() => {
-          throw new LlmError('aborted', 'Aborted')
-        })
-      }
-    }
+    if (!this.apiKey) throw tag(new LlmError('no-key', `No ${this.preset.label} API key configured`), this.preset.label)
+    return runWithRetries(() => this.callOnce(req), {
+      maxAttempts: this.maxAttempts,
+      sleep: this.sleep,
+      provider: this.preset.label,
+      ...(req.signal ? { signal: req.signal } : {}),
+    })
   }
 
   /**
@@ -92,50 +95,83 @@ export class GeminiApiAdapter implements LlmPort {
    * Also validates the model name in the same round trip.
    */
   async testKey(signal?: AbortSignal): Promise<void> {
-    if (!this.apiKey) throw new LlmError('no-key', 'No Gemini API key configured')
+    if (!this.apiKey) throw tag(new LlmError('no-key', 'No API key configured'), this.preset.label)
     let res: Response
     try {
-      res = await this.fetchImpl(`${GEMINI_API_BASE}/${modelPath(this.modelId)}`, {
+      res = await this.fetchImpl(`${this.preset.baseUrl}/${modelPath(this.model)}`, {
         method: 'GET',
         headers: { 'x-goog-api-key': this.apiKey },
         ...(signal ? { signal } : {}),
       })
     } catch (err) {
-      throw toLlmError(err)
+      throw tag(toLlmError(err), this.preset.label)
     }
-    if (!res.ok) throw classifyHttpError(res.status, await safeJson(res))
+    if (!res.ok) throw tag(classifyHttpError(res.status, await safeJson(res), res.headers), this.preset.label)
   }
 
-  private async callOnce(req: LlmRequest): Promise<string> {
-    const body = {
-      systemInstruction: { parts: [{ text: req.system }] },
-      contents: [{ role: 'user', parts: [{ text: req.prompt }] }],
-      generationConfig: {
-        temperature: 0,
-        responseMimeType: 'application/json',
-        responseSchema: req.schema,
-      },
+  private async callOnce(req: LlmRequest): Promise<unknown> {
+    const promptMode = this.preset.jsonMode === 'prompt'
+    const body = promptMode
+      ? {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${req.system}\n\n${jsonInstruction(schemaForPrompt(req.schema))}\n\n${req.prompt}` }],
+            },
+          ],
+          generationConfig: { temperature: 0 },
+        }
+      : {
+          systemInstruction: { parts: [{ text: req.system }] },
+          contents: [{ role: 'user', parts: [{ text: req.prompt }] }],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
+            responseSchema: req.schema,
+          },
+        }
+
+    if (this.limiter) {
+      const tokens = estimateTokens(req.system.length + req.prompt.length) + this.preset.outputReserveTokens
+      const onWait = req.onWait
+      await this.limiter.acquire(
+        tokens,
+        this.sleep,
+        req.signal,
+        onWait ? (ms) => onWait({ provider: this.preset.label, ms }) : undefined,
+      )
     }
 
-    let res: Response
+    const attempt = attemptSignal(req.signal, this.preset.timeoutMs)
     try {
-      res = await this.fetchImpl(`${GEMINI_API_BASE}/${modelPath(this.modelId)}:generateContent`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
-        body: JSON.stringify(body),
-        ...(req.signal ? { signal: req.signal } : {}),
-      })
+      let res: Response
+      try {
+        res = await this.fetchImpl(`${this.preset.baseUrl}/${modelPath(this.model)}:generateContent`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
+          body: JSON.stringify(body),
+          signal: attempt.signal,
+        })
+      } catch (err) {
+        throw toLlmError(err, attempt.timedOut())
+      }
+      const json = await safeJson(res)
+      if (!res.ok) throw classifyHttpError(res.status, json, res.headers)
+      const text = extractText(json)
+      try {
+        return promptMode ? extractJson(text) : JSON.parse(text)
+      } catch {
+        throw new LlmError('schema', 'The model returned malformed JSON')
+      }
     } catch (err) {
-      throw toLlmError(err)
+      throw toLlmError(err, attempt.timedOut())
+    } finally {
+      attempt.done()
     }
-
-    const json = await safeJson(res)
-    if (!res.ok) throw classifyHttpError(res.status, json)
-    return extractText(json)
   }
 }
 
-/** `generateContent` response → the JSON text the model produced. */
+/** `generateContent` response → the text the model produced. */
 export function extractText(json: unknown): string {
   if (!isRecord(json)) throw new LlmError('schema', 'Empty response from Gemini')
 
@@ -154,7 +190,7 @@ export function extractText(json: unknown): string {
 
   const content = isRecord(candidate.content) ? candidate.content : null
   const parts = content && Array.isArray(content.parts) ? content.parts : []
-  // Thinking models may emit thought parts; only the answer parts are JSON.
+  // Thinking models may emit thought parts; only the answer parts matter.
   const text = parts
     .filter((p): p is Record<string, unknown> => isRecord(p) && p.thought !== true)
     .map((p) => (typeof p.text === 'string' ? p.text : ''))
@@ -167,41 +203,7 @@ export function extractText(json: unknown): string {
 }
 
 function modelPath(model: string): string {
-  const name = model.startsWith('models/') ? model.slice('models/'.length) : model
-  return `models/${encodeURIComponent(name)}`
-}
-
-function toLlmError(err: unknown): LlmError {
-  if (err instanceof LlmError) return err
-  if (isAbort(err)) return new LlmError('aborted', 'Aborted')
-  return new LlmError('network', err instanceof Error ? err.message : String(err))
-}
-
-function isAbort(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError'
-}
-
-async function safeJson(res: Response): Promise<unknown> {
-  try {
-    return await res.json()
-  } catch {
-    return null
-  }
-}
-
-function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'))
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort)
-      resolve()
-    }, ms)
-    const onAbort = () => {
-      clearTimeout(timer)
-      reject(new DOMException('Aborted', 'AbortError'))
-    }
-    signal?.addEventListener('abort', onAbort, { once: true })
-  })
+  return `models/${encodeURIComponent(model)}`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
