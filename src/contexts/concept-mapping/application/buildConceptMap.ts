@@ -6,6 +6,7 @@ import {
   validateExtraction,
   validateRelations,
   type ConceptMap,
+  type Field,
   type RawConcept,
   type Relation,
   type TranscriptLine,
@@ -121,6 +122,7 @@ export async function buildConceptMap(
   const chunks = chunkLines(lines, deps.maxChunkChars ?? deps.llm.maxInputChars, input.timed)
   const raws: RawConcept[] = []
   let topic = ''
+  let field: Field | null = null
   for (let i = 0; i < chunks.length; i++) {
     progress({ step: 'extract', current: i + 1, total: chunks.length })
     let raw: unknown
@@ -144,6 +146,7 @@ export async function buildConceptMap(
       input.durationSec !== undefined ? { durationSec: input.durationSec } : {},
     )
     if (!topic && extraction.topic) topic = extraction.topic
+    if (!field && extraction.field) field = extraction.field
     raws.push(...extraction.concepts)
   }
 
@@ -178,6 +181,8 @@ export async function buildConceptMap(
     model: deps.llm.modelId,
     title: input.title,
     topic,
+    ...(field ? { field } : {}),
+    outputLanguage: input.outputLanguage,
     createdAt: (deps.clock ?? (() => new Date().toISOString()))(),
     timed: input.timed,
     concepts,

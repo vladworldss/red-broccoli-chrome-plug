@@ -2,6 +2,7 @@
  * Transcript → files a student can keep. Pure string builders; saving the
  * file is the UI's job.
  */
+import { safeFileStem } from '../../../shared/fileName'
 import { formatTimestamp } from '../../../shared/time'
 import { mergeIntoLines } from './parsers'
 import type { Transcript } from './Transcript'
@@ -44,12 +45,7 @@ export function toTimestampedText(t: Transcript): string {
  * Windows/macOS file names are dropped; "und" (unknown) language is omitted.
  */
 export function subtitleFileName(title: string, videoId: string, lang: string, ext: 'srt' | 'txt'): string {
-  const clean = title
-    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80)
-    .trim()
+  const clean = safeFileStem(title)
   const base = clean ? `${clean} [${videoId}]` : videoId
   const langPart = lang && lang !== 'und' ? `.${lang.replace(/[^A-Za-z0-9-]/g, '')}` : ''
   return `${base}${langPart}.${ext}`

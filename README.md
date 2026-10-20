@@ -18,10 +18,15 @@ and the side panel shows the lecture's **key concepts** as a tree:
   **Copy Mermaid** (the full concept graph — paste it into
   [mermaid.live](https://mermaid.live), or a ```` ```mermaid ```` block in
   GitHub/Obsidian/Notion);
+- **Download notes (.md)**: `<video title>-lecture.md`, one chapter per
+  concept as in the tree. Each chapter has a timestamp link, a short
+  explanation in plain words and links for self-study (Wikipedia, YouTube,
+  Khan Academy, …). A table at the top lists the video, the export date and
+  the model that built the map. It is made locally from the saved map, with
+  no extra AI call;
+- **Read more** links and an "In plain words" line when you open a concept;
 - **Download .srt / .txt**: the lecture's subtitles as a file. This works
   without an API key, and the .txt can be pasted back to rebuild a map.
-
-It is not a summary of the video. It is a map of the concepts.
 
 ```
 Calculus: limits and derivatives

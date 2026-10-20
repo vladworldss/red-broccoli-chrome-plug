@@ -75,6 +75,10 @@ for (const id of Object.keys(PROVIDERS) as ProviderId[]) {
       expect(terms.some((x) => x.includes('limit'))).toBe(true)
       expect(map.concepts.every((c) => c.t === null || (c.t >= 0 && c.t <= 240))).toBe(true)
       expect(map.model.startsWith(`${id}:`)).toBe(true)
+      // p2: the notes need a plain-language summary and a Wikipedia title per concept.
+      expect(map.concepts.filter((c) => c.summary).length).toBeGreaterThanOrEqual(map.concepts.length / 2)
+      expect(map.concepts.filter((c) => c.refTitle).length).toBeGreaterThanOrEqual(map.concepts.length / 2)
+      expect(map.field).toBe('math')
     })
   })
 }

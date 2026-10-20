@@ -15,6 +15,13 @@ export type Concept = {
   t: number | null
   /** 0..1 — 1 is central to the lecture. */
   importance: number
+  /**
+   * 1–3 plain-language sentences: what it is and why it matters, as the
+   * lecture explains it. Absent on maps built before prompt p2.
+   */
+  summary?: string
+  /** Exact English Wikipedia article title, for reading links. Absent before p2. */
+  refTitle?: string
 }
 
 /**
@@ -36,6 +43,9 @@ export type RawConcept = {
   aliases: string[]
   t: number | null
   importance: number
+  /** Empty when the model gave none. */
+  summary: string
+  refTitle: string
 }
 
 /**

@@ -286,6 +286,25 @@ textarea.sh-input {
   font-size: 12px;
   color: var(--muted);
 }
+.sh-plain {
+  margin: 4px 0 0;
+  color: var(--fg);
+}
+.sh-links {
+  display: flex;
+  gap: 4px 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.sh-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.sh-links a:hover {
+  text-decoration: underline;
+}
 .sh-tags {
   display: flex;
   gap: 4px;

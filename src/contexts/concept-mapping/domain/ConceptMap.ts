@@ -16,8 +16,23 @@ export type ConceptMap = {
   createdAt: string
   /** False when built from an untimed paste: no concept has a seek target. */
   timed: boolean
+  /** Subject area, picks the reading sources. Absent on maps built before p2. */
+  field?: Field
+  /**
+   * The "Map language" setting the map was built with ("auto" = the lecture's
+   * own). Tells which language the terms are in. Absent before 0.5.0.
+   */
+  outputLanguage?: string
   concepts: Concept[]
   relations: Relation[]
+}
+
+/** Subject areas the extraction prompt classifies a lecture into. */
+export const FIELDS = ['math', 'cs', 'physics', 'chemistry', 'biology', 'economics', 'other'] as const
+export type Field = (typeof FIELDS)[number]
+
+export function isField(v: unknown): v is Field {
+  return typeof v === 'string' && (FIELDS as readonly string[]).includes(v)
 }
 
 export type CreateConceptMapInput = Omit<ConceptMap, 'concepts' | 'relations'> & {

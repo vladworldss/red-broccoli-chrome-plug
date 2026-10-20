@@ -20,7 +20,6 @@ import {
   NoConceptsError,
   EmptyTranscriptError,
   buildConceptMap,
-  loadCachedConceptMap,
   loadFallbackConceptMap,
   type BuildProgress,
   type ConceptMap,
@@ -156,8 +155,10 @@ export function usePanel() {
       shownVideo.current = video.videoId
       return setViewState(running.view)
     }
+    // Any saved map, even one from an older prompt version: after a prompt bump
+    // the user still sees their map (badged "older version") instead of "Build map".
     const cached = mapCache
-      ? await loadCachedConceptMap(video.videoId, { cache: mapCache })
+      ? await loadFallbackConceptMap(video.videoId, { cache: mapCache })
       : null
     if (my !== gen.current) return
     shownVideo.current = video.videoId

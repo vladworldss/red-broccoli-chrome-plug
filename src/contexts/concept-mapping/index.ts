@@ -4,9 +4,12 @@ export * from './application/ConceptMapCache'
 export { PROMPT_VERSION } from './application/prompts'
 export { ChromeConceptMapCache } from './infrastructure/ChromeConceptMapCache'
 export {
+  notesFileName,
+  toLectureNotes,
   toMarkdown,
   toMermaid,
   toTree,
+  type NotesOptions,
   type Concept,
   type ConceptMap,
   type ConceptRef,

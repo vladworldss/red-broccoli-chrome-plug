@@ -74,6 +74,37 @@ function input(over: Partial<BuildConceptMapInput> = {}): BuildConceptMapInput {
 }
 
 describe('buildConceptMap flow (transcript → map → cache → export)', () => {
+  it('p2: plain summary, Wikipedia title, subject and map language reach the saved map', async () => {
+    const { llm } = fakeLlm({
+      extraction: {
+        topic: 'Calculus',
+        field: 'math',
+        concepts: [
+          {
+            term: 'Derivative',
+            definition: 'Rate of change',
+            aliases: [],
+            t: 20,
+            importance: 1,
+            summary: 'How fast something changes right now, like a speedometer.',
+            refTitle: 'Derivative',
+          },
+          { term: 'Limit', definition: 'Approach value', aliases: [], t: 10, importance: 0.8, summary: '', refTitle: '' },
+        ],
+      },
+    })
+    const { map } = await buildConceptMap(input({ outputLanguage: 'Russian' }), { llm })
+    expect(map.promptVersion).toBe(PROMPT_VERSION)
+    expect(map.field).toBe('math')
+    expect(map.outputLanguage).toBe('Russian')
+    const d = map.concepts.find((c) => c.term === 'Derivative')!
+    expect(d).toMatchObject({ summary: 'How fast something changes right now, like a speedometer.', refTitle: 'Derivative' })
+    // Empty strings from the model are not stored as fields.
+    const l = map.concepts.find((c) => c.term === 'Limit')!
+    expect('summary' in l).toBe(false)
+    expect('refTitle' in l).toBe(false)
+  })
+
   it('extracts, merges, relates and produces a readable tree', async () => {
     const { llm, requests } = fakeLlm()
     const progress = vi.fn()
