@@ -2,7 +2,7 @@
 
 All notable changes to RedBroccoli (called StudHelper up to 0.3.0) are
 documented here. Versions follow the `version` field in
-[package.json](package.json), which is what the side panel header shows.
+[package.json](package.json), which the Settings page shows at the bottom.
 
 ## [0.5.0] — 2026-10-20
 
@@ -30,6 +30,14 @@ documented here. Versions follow the `version` field in
 - **Maps you already built stay on screen**, marked "older version". Their
   notes use the one-line definitions. Press Rebuild to get plain-language
   explanations.
+- **A cleaner panel with more room for the map.**
+  - One header shows "Lecture Concept Maps" and the video's title, with
+    Settings behind the gear. Chrome's own bar already shows the extension's
+    name.
+  - The version number is now at the bottom of Settings.
+  - Download notes is the main button. Copy Markdown and Copy Mermaid sit
+    beside a small ↻ Rebuild button.
+  - Subtitles moved below the map, into a "Download subtitles" menu.
 
 ## [0.4.0] — 2026-10-17
 

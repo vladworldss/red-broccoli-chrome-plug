@@ -6,6 +6,7 @@ import {
   toTimestampedText,
   type CaptureResult,
 } from '../../contexts/video-capture'
+import { ChevronIcon, DownloadIcon, FileIcon, FileTextIcon, SubtitlesIcon } from '../icons'
 import { saveTextFile } from '../saveTextFile'
 import type { VideoRef } from './usePanel'
 
@@ -16,7 +17,7 @@ type Props = {
 }
 
 /**
- * "Subtitles: .srt / .txt". Uses the cached transcript when there is one, so
+ * "Subtitles" card with a "Download subtitles" menu (.srt / .txt). Uses the cached transcript when there is one, so
  * after a map is built this is instant and never toggles captions again. Needs
  * no API key — nothing leaves the browser.
  */
@@ -47,14 +48,50 @@ export function TranscriptDownload({ video, getTranscript, onToast }: Props) {
   }
 
   return (
-    <div className="sh-row sh-small">
-      <span className="sh-muted">{busy ? 'Reading subtitles…' : 'Subtitles:'}</span>
-      <button className="sh-btn" disabled={busy} onClick={() => void download('srt')} title="Subtitle file with timing, for video players">
-        Download .srt
-      </button>
-      <button className="sh-btn" disabled={busy} onClick={() => void download('txt')} title="Readable text with timestamps">
-        Download .txt
-      </button>
-    </div>
+    <section className="sh-subs sh-card" aria-label="Subtitles">
+      <div className="sh-subs-head">
+        <SubtitlesIcon />
+        <div>
+          <strong>Subtitles</strong>
+          <div className="sh-small sh-muted">Download transcript</div>
+        </div>
+      </div>
+      {/* Native disclosure: keyboard and screen-reader friendly, no state to keep. */}
+      <details className="sh-disclosure">
+        <summary className="sh-btn sh-btn-secondary">
+          <DownloadIcon />
+          <span>{busy ? 'Reading subtitles…' : 'Download subtitles'}</span>
+          <span className="sh-chevron">
+            <ChevronIcon />
+          </span>
+        </summary>
+        <div className="sh-menu">
+          <button
+            className="sh-menu-item"
+            disabled={busy}
+            onClick={() => void download('srt')}
+          >
+            <FileTextIcon />
+            <span>
+              Subtitles (.srt)
+              <span className="sh-small sh-muted">With timestamps, for video players</span>
+            </span>
+          </button>
+          <button
+            className="sh-menu-item"
+            disabled={busy}
+            onClick={() => void download('txt')}
+          >
+            <FileIcon />
+            <span>
+              Plain text (.txt)
+              {/* It keeps an m:ss per line on purpose: that is what lets the
+                  file be pasted back to rebuild a map. */}
+              <span className="sh-small sh-muted">Readable; can be pasted back to rebuild</span>
+            </span>
+          </button>
+        </div>
+      </details>
+    </section>
   )
 }

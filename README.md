@@ -25,8 +25,9 @@ and the side panel shows the lecture's **key concepts** as a tree:
   the model that built the map. It is made locally from the saved map, with
   no extra AI call;
 - **Read more** links and an "In plain words" line when you open a concept;
-- **Download .srt / .txt**: the lecture's subtitles as a file. This works
-  without an API key, and the .txt can be pasted back to rebuild a map.
+- **Subtitles** (at the bottom of the panel → Download subtitles): .srt with
+  timing or readable .txt. This works without an API key, and the .txt can be
+  pasted back to rebuild a map.
 
 ```
 Calculus: limits and derivatives
@@ -48,7 +49,7 @@ Calculus: limits and derivatives
    DeepSeek, tried in the order you set. When one runs out of quota or fails,
    the next one takes over automatically.
 3. **Cache.** The map is stored in your browser, so reopening the video
-   shows it instantly and makes no API calls. Use **Rebuild** to build it again.
+   shows it instantly and makes no API calls. Use **Rebuild** (the ↻ button) to build it again.
 
 There is no RedBroccoli server and no analytics. See
 [docs/store/privacy-policy.md](docs/store/privacy-policy.md).
@@ -72,7 +73,7 @@ YouTube tabs that were open **before** you installed or reloaded the extension
 don't have it yet. Reload them once.
 
 After each rebuild, press ↻ on the extension card and reload the YouTube tab.
-The panel header shows the loaded version.
+The loaded version is shown at the bottom of Settings (the gear in the panel).
 
 ## Develop
 
