@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { isOutdatedMap, toMarkdown, toMermaid, toTree, type ConceptMap } from '../../contexts/concept-mapping'
+import {
+  isOutdatedMap,
+  notesFileName,
+  toLectureNotes,
+  toMarkdown,
+  toMermaid,
+  toTree,
+  type Concept,
+  type ConceptMap,
+} from '../../contexts/concept-mapping'
+import { referenceLinks } from '../../contexts/references'
 import { watchUrl, type CaptureResult } from '../../contexts/video-capture'
 import { extensionVersion } from '../extensionVersion'
 import { ConceptTree } from './ConceptTree'
 import { MindMap } from './MindMap'
 import { TranscriptDownload } from './TranscriptDownload'
 import { describeModels } from '../../contexts/llm-gateway'
+import { termsLang } from '../languages'
 import { hasAnyProvider } from '../llmChain'
+import { saveTextFile } from '../saveTextFile'
 import { usePanel, type BuildFailure, type VideoRef, type View } from './usePanel'
 
 export function App() {
@@ -337,6 +349,27 @@ function MapView({
 }) {
   const [tab, setTab] = useState<'tree' | 'mindmap'>('tree')
   const tree = useMemo(() => toTree(map), [map])
+  const linksFor = useCallback(
+    (c: Concept) => referenceLinks({ term: c.term, refTitle: c.refTitle, field: map.field, lang: termsLang(map) }),
+    [map],
+  )
+
+  /** Rebuilt from the cached map on every click: no AI call, always-current "Exported". */
+  const downloadNotes = () => {
+    const text = toLectureNotes(map, tree, {
+      linkFor: (t) => watchUrl(map.videoId, t),
+      videoUrl: watchUrl(map.videoId),
+      linksFor,
+      meta: {
+        exportedAt: localDateTime(new Date()),
+        builtAt: localDateTime(new Date(map.createdAt)),
+        modelLabel: describeModels(map.model),
+        appVersion: extensionVersion(),
+      },
+    })
+    saveTextFile(notesFileName(map.title || video.title, map.videoId), text, 'text/markdown')
+    onToast('Notes downloaded')
+  }
 
   const copy = async (kind: 'md' | 'mermaid') => {
     const text =
@@ -389,13 +422,22 @@ function MapView({
       </div>
 
       <div className="sh-row">
+        <button
+          className="sh-btn sh-btn-primary"
+          onClick={downloadNotes}
+          title="Plain-language notes: one chapter per concept, with timestamps and links for self-study"
+        >
+          Download notes (.md)
+        </button>
+      </div>
+      <div className="sh-row">
         <button className="sh-btn" onClick={() => void copy('md')}>
           Copy Markdown
         </button>
         <button className="sh-btn" onClick={() => void copy('mermaid')}>
           Copy Mermaid
         </button>
-        <button className="sh-btn" onClick={onRebuild} title="Ask Gemini again, ignoring the cache">
+        <button className="sh-btn" onClick={onRebuild} title="Ask the AI again, ignoring the cache">
           Rebuild
         </button>
       </div>
@@ -410,7 +452,18 @@ function MapView({
         </button>
       </div>
 
-      {tab === 'tree' ? <ConceptTree tree={tree} onSeek={onSeek} /> : <MindMap tree={tree} onSeek={onSeek} />}
+      {tab === 'tree' ? (
+        <ConceptTree tree={tree} onSeek={onSeek} linksFor={linksFor} />
+      ) : (
+        <MindMap tree={tree} onSeek={onSeek} />
+      )}
     </>
   )
+}
+
+/** "2026-10-20 14:05" in the viewer's time zone; "unknown" for a bad date. */
+function localDateTime(d: Date): string {
+  if (Number.isNaN(d.getTime())) return 'unknown'
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }

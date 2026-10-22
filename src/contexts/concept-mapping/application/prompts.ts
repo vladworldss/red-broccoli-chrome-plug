@@ -6,12 +6,14 @@ import { renderLines, type TranscriptLine } from '../domain'
  * cache key, so a bump re-runs the LLM for every video while the cached
  * transcripts are reused as-is.
  */
-export const PROMPT_VERSION = 'p1'
+// p2 (0.5.0): per-concept plain-language `summary` and `refTitle`, top-level `field`.
+export const PROMPT_VERSION = 'p2'
 
 export const EXTRACTION_SCHEMA: JsonSchema = {
   type: 'OBJECT',
   properties: {
     topic: { type: 'STRING', description: 'Short name of the subject area of the lecture' },
+    field: { type: 'STRING', enum: ['math', 'cs', 'physics', 'chemistry', 'biology', 'economics', 'other'] },
     concepts: {
       type: 'ARRAY',
       items: {
@@ -22,14 +24,16 @@ export const EXTRACTION_SCHEMA: JsonSchema = {
           aliases: { type: 'ARRAY', items: { type: 'STRING' } },
           t: { type: 'INTEGER', nullable: true },
           importance: { type: 'NUMBER' },
+          summary: { type: 'STRING' },
+          refTitle: { type: 'STRING' },
         },
-        required: ['term', 'definition', 'aliases', 't', 'importance'],
-        propertyOrdering: ['term', 'definition', 'aliases', 't', 'importance'],
+        required: ['term', 'definition', 'aliases', 't', 'importance', 'summary', 'refTitle'],
+        propertyOrdering: ['term', 'definition', 'aliases', 't', 'importance', 'summary', 'refTitle'],
       },
     },
   },
-  required: ['topic', 'concepts'],
-  propertyOrdering: ['topic', 'concepts'],
+  required: ['topic', 'field', 'concepts'],
+  propertyOrdering: ['topic', 'field', 'concepts'],
 }
 
 export const RELATIONS_SCHEMA: JsonSchema = {
@@ -63,8 +67,8 @@ export type PromptContext = {
 
 function languageRule(outputLanguage: string): string {
   return outputLanguage === 'auto' || !outputLanguage.trim()
-    ? 'Write terms and definitions in the language of the lecture.'
-    : `Write terms and definitions in ${outputLanguage.trim()}. Keep a well-known original-language term as an alias.`
+    ? 'Write terms, definitions and summaries in the language of the lecture.'
+    : `Write terms, definitions and summaries in ${outputLanguage.trim()}. Keep a well-known original-language term as an alias.`
 }
 
 export const EXTRACTION_SYSTEM = `You build study concept maps for students from lecture transcripts.
@@ -79,8 +83,11 @@ For each concept:
 - aliases: other names, abbreviations or notation actually used for it (e.g. "f'(x)", "dy/dx"). Empty array if none.
 - t: lines are prefixed with a number in brackets — the second at which that line starts. Copy the number of the line where the concept is first EXPLAINED (not merely mentioned). Use null if lines have no bracketed numbers.
 - importance: 0..1. 1 = central idea of the lecture, 0.5 = supporting concept, 0.2 = briefly mentioned.
+- summary: 1–3 short sentences in PLAIN words for a first-year student: what it is and why it matters, as this lecture explains it. Explain any jargon you use; add an everyday analogy when it helps. Do not just repeat the definition.
+- refTitle: the exact title of the English Wikipedia article about this concept (e.g. "Big O notation", not "Big O"; "Derivative" for "производная"). Empty string if no article fits.
 
 topic: a short name of the subject area (e.g. "Calculus: derivatives").
+field: the subject area of the whole lecture — math, cs, physics, chemistry, biology, economics, or other.
 Return between 5 and 40 concepts, more for longer and denser lectures. Never invent concepts that are not in the transcript.`
 
 export function extractionPrompt(

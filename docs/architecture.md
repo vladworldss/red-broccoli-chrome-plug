@@ -34,7 +34,8 @@ process, so playback is never affected.
 | Context | Domain | Application (ports) | Infrastructure |
 |---|---|---|---|
 | **video-capture** | `Transcript`, `VideoMeta`; parsers for json3 / srv1 / srv3 / DOM rows / pasted text; `mergeIntoLines`, `parseChapters`, `chooseCaptionTrack` | `TranscriptProvider`, `TranscriptCache`; `captureTranscript`, `manualTranscript`, `transcriptToLines` | `pageHooks` (MAIN), `bridge` (ISOLATED), `transcriptPanel`, `selectors`, `YouTubeTabClient`, `ChromeTranscriptCache` |
-| **concept-mapping** (core) | `Concept`, `Relation`, `ConceptMap` (invariants in `createConceptMap`); `normalizeTerm`, `mergeConcepts`, `validateExtraction/Relations`, `toTree`, `toMarkdown`, `toMermaid`, `chunkLines` | `ConceptMapCache`; `buildConceptMap`, `loadCachedConceptMap`; `prompts.ts` + `PROMPT_VERSION` | `ChromeConceptMapCache` |
+| **concept-mapping** (core) | `Concept`, `Relation`, `ConceptMap` (invariants in `createConceptMap`); `normalizeTerm`, `mergeConcepts`, `validateExtraction/Relations`, `toTree`, `toMarkdown`, `toLectureNotes`, `toMermaid`, `chunkLines` | `ConceptMapCache`; `buildConceptMap`, `loadCachedConceptMap`; `prompts.ts` + `PROMPT_VERSION` | `ChromeConceptMapCache` |
+| **references** | `referenceLinks`: "where to read more" links from fixed URL templates (Wikipedia, YouTube, Khan Academy, MathWorld, GeeksforGeeks, CS StackExchange, Investopedia) chosen by the lecture's `field` | — | — (no network: links open only on click) |
 | **llm-gateway** | `LlmError` taxonomy and `classifyHttpError` (Google and OpenAI error shapes), `PROVIDERS` presets, `RateLimiter`, `toStandardJsonSchema`, `extractJson` | `LlmPort`; `FallbackLlm` (provider chain, cooldowns, `InputTooLargeError`) | `GeminiApiAdapter` (Gemini, Gemma), `OpenAiCompatibleAdapter` (Mistral, Groq, OpenRouter, DeepSeek), `createAdapter`; shared retries and timeouts in `http.ts` |
 
 concept-mapping depends on llm-gateway only through `LlmPort`. It consumes

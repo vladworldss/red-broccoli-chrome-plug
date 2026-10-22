@@ -6,8 +6,10 @@ import {
   createConceptMap,
   mergeConcepts,
   normalizeTerm,
+  notesFileName,
   renderLines,
   slugify,
+  toLectureNotes,
   toMarkdown,
   toMermaid,
   toTree,
@@ -26,10 +28,12 @@ const raw = (term: string, over: Partial<RawConcept> = {}): RawConcept => ({
   aliases: [],
   t: null,
   importance: 0.5,
+  summary: '',
+  refTitle: '',
   ...over,
 })
 
-const concept = (id: string, over: Partial<Concept> = {}): Concept => ({
+const concept =(id: string, over: Partial<Concept> = {}): Concept => ({
   id,
   term: id[0]!.toUpperCase() + id.slice(1),
   definition: `${id} def`,
@@ -93,11 +97,31 @@ describe('validateExtraction', () => {
       { durationSec: 3600 },
     )
     expect(out.topic).toBe('Calculus')
+    expect(out.field).toBeNull()
+    const none = { summary: '', refTitle: '' }
     expect(out.concepts).toEqual([
-      { term: 'Limit', definition: 'x', aliases: ['lim'], t: 4, importance: 1 },
-      { term: 'Derivative', definition: 'y', aliases: [], t: 3600, importance: 0.5 },
-      { term: 'Negative t', definition: '', aliases: [], t: null, importance: 0 },
+      { term: 'Limit', definition: 'x', aliases: ['lim'], t: 4, importance: 1, ...none },
+      { term: 'Derivative', definition: 'y', aliases: [], t: 3600, importance: 0.5, ...none },
+      { term: 'Negative t', definition: '', aliases: [], t: null, importance: 0, ...none },
     ])
+  })
+
+  it('p2 fields: plain summary and Wikipedia title are cleaned and capped; field falls back to other', () => {
+    const long = 'word '.repeat(200)
+    const out = validateExtraction({
+      topic: 'Algorithms',
+      field: 'Computer science',
+      concepts: [
+        { term: 'Big O', definition: 'd', summary: '  A way to say\n how fast  it grows. ', refTitle: ' Big O notation ' },
+        { term: 'Huge', definition: 'd', summary: long, refTitle: 'x'.repeat(300) },
+      ],
+    })
+    expect(out.field).toBe('other')
+    expect(out.concepts[0]).toMatchObject({ summary: 'A way to say how fast it grows.', refTitle: 'Big O notation' })
+    expect(out.concepts[1]!.summary.length).toBeLessThanOrEqual(401)
+    expect(out.concepts[1]!.summary.endsWith('…')).toBe(true)
+    expect(out.concepts[1]!.refTitle.length).toBeLessThanOrEqual(101)
+    expect(validateExtraction({ field: ' CS ', concepts: [] }).field).toBe('cs')
   })
 
   it('throws only on a wholly wrong shape', () => {
@@ -261,6 +285,84 @@ describe('exporters', () => {
         '',
       ].join('\n'),
     )
+  })
+
+  const meta = { exportedAt: '2026-10-20 14:05', builtAt: '2026-10-16 18:47', modelLabel: 'Groq · gpt-oss', appVersion: '0.5.0' }
+
+  it('lecture notes: meta table, one chapter per tree node, seek links, plain text, needs, self-study links', () => {
+    const withSummary = map(
+      [
+        concept('calculus', { t: 0, importance: 1, summary: 'The maths of change.' }),
+        concept('derivative', { term: 'Derivative [d/dx]', t: 734, summary: 'How fast it changes | right now.' }),
+        concept('limit', { t: null }),
+      ],
+      m.relations,
+    )
+    const md = toLectureNotes(withSummary, toTree(withSummary), {
+      linkFor: (t) => `https://y/${t}`,
+      videoUrl: 'https://y/v',
+      linksFor: (c) => [{ source: 'Wikipedia', query: c.term, url: `https://w/${c.id}` }],
+      meta,
+    })
+    expect(md).toBe(
+      [
+        '# Calculus 1',
+        '',
+        '| | |',
+        '|---|---|',
+        '| Video | [Calculus 1](https://y/v) |',
+        '| Topic | Calculus |',
+        '| Exported | 2026-10-20 14:05 |',
+        '| Map built | 2026-10-16 18:47 |',
+        '| Model | Groq · gpt-oss |',
+        '| Made with | RedBroccoli 0.5.0 |',
+        '',
+        '## [0:00](https://y/0) Calculus',
+        '',
+        'The maths of change.',
+        '',
+        '**For self-study:**',
+        '- [Wikipedia: Calculus](https://w/calculus)',
+        '',
+        '### [12:14](https://y/734) Derivative \\[d/dx\\]',
+        '',
+        'How fast it changes | right now.',
+        '',
+        '**Needs:** Limit',
+        '',
+        '**For self-study:**',
+        '- [Wikipedia: Derivative \\[d/dx\\]](https://w/derivative)',
+        '',
+        '## Limit',
+        '',
+        'limit def', // a pre-p2 concept: no summary, so the definition
+        '',
+        '**For self-study:**',
+        '- [Wikipedia: Limit](https://w/limit)',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('lecture notes: headings stop at level 6; no links or timestamps when not given', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    const deep = map(
+      ids.map((id) => concept(id)),
+      ids.slice(1).map((id, i) => ({ from: id, to: ids[i]!, type: 'part-of' as const })),
+      { timed: false },
+    )
+    const md = toLectureNotes(deep, toTree(deep), { meta })
+    const headings = md.split('\n').filter((l) => l.startsWith('#'))
+    expect(headings).toEqual(['# Calculus 1', '## A', '### B', '#### C', '##### D', '###### E', '###### F', '###### G'])
+    expect(md).toContain('| Video | Calculus 1 |')
+    expect(md).not.toContain('For self-study')
+  })
+
+  it('notes file name: "<title>-lecture.md", unsafe characters dropped, id when no title', () => {
+    expect(notesFileName('1. Algorithms and Computation', 'vid')).toBe('1. Algorithms and Computation-lecture.md')
+    expect(notesFileName('A/B: "tests"?', 'vid')).toBe('A B tests-lecture.md')
+    expect(notesFileName('  ', 'vid')).toBe('vid-lecture.md')
+    expect(notesFileName('x'.repeat(200), 'vid')).toBe(`${'x'.repeat(80)}-lecture.md`)
   })
 
   it('Mermaid: positional ids, quoted labels, both edge kinds', () => {

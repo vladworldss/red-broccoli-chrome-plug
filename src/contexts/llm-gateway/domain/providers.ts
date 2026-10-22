@@ -101,8 +101,9 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     jsonMode: 'json-schema',
     // Free tier for gpt-oss-120b, from live x-ratelimit-* headers: 8000 TPM, 1000 RPD.
     limits: { rpm: 30, tpm: 8000 },
-    // Measured: 1.0–1.2k completion tokens per part (reasoning ~90 of them).
-    outputReserveTokens: 1500,
+    // Measured at p1: 1.0–1.2k completion tokens per part (reasoning ~90 of them);
+    // p2 adds a plain-language summary per concept (~+500).
+    outputReserveTokens: 2000,
     // ≈3.5k input tokens, so input + system + output stays under 8k TPM.
     maxInputChars: 14_000,
     timeoutMs: 120_000,

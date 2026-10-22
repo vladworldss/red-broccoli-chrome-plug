@@ -1,4 +1,4 @@
-# Chrome Web Store listing — RedBroccoli 0.4.0
+# Chrome Web Store listing — RedBroccoli 0.5.0
 
 ## Basics
 
@@ -29,6 +29,8 @@ notes, never as "download from YouTube".
 > • How they fit together: what is part of what, and what you need to know first
 > • A timestamp on every concept. Click it to jump to where it is explained
 > • A zoomable mind map view
+> • Download plain-language lecture notes (.md): one chapter per concept, with timestamps and links for self-study
+> • Read-more links for every concept: Wikipedia, YouTube explainers, Khan Academy and more
 > • Copy as Markdown (for Obsidian or Notion, with timestamp links) or as a Mermaid diagram
 > • Save the lecture's subtitles as .srt (with timing) or readable .txt
 >

@@ -12,9 +12,10 @@ import {
  * normalized terms/aliases coincide — transitively, via union-find, so
  * "f'(x)" ↔ "derivative" ↔ "derivatives" all collapse together.
  *
- * The merged concept takes its term and definition from the most important
- * member (ties: earliest seen), the EARLIEST timestamp of any member, the
- * highest importance, and the union of every other spelling as aliases.
+ * The merged concept takes its term, definition, summary and reference title
+ * from the most important member (or, where it has none, the first member that
+ * does; ties: earliest seen), the EARLIEST timestamp of any member, the highest
+ * importance, and the union of every other spelling as aliases.
  */
 export function mergeConcepts(raws: readonly RawConcept[]): Concept[] {
   const parent = raws.map((_, i) => i)
@@ -67,8 +68,10 @@ export function mergeConcepts(raws: readonly RawConcept[]): Concept[] {
     }
 
     const times = items.map((r) => r.t).filter((t): t is number => t !== null)
-    const definition =
-      lead.definition || items.map((r) => r.definition).find((d) => d.length > 0) || ''
+    const firstOf = (pick: (r: RawConcept) => string) => pick(lead) || items.map(pick).find((v) => v.length > 0) || ''
+    const definition = firstOf((r) => r.definition)
+    const summary = firstOf((r) => r.summary)
+    const refTitle = firstOf((r) => r.refTitle)
 
     merged.push({
       id: uniqueId(slugify(lead.term), usedIds),
@@ -77,6 +80,8 @@ export function mergeConcepts(raws: readonly RawConcept[]): Concept[] {
       aliases,
       t: times.length ? Math.min(...times) : null,
       importance: Math.max(...items.map((r) => r.importance)),
+      ...(summary ? { summary } : {}),
+      ...(refTitle ? { refTitle } : {}),
     })
   }
 

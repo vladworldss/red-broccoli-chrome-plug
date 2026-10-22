@@ -12,9 +12,9 @@ import { cacheUsage, clearCache, type CacheUsage } from '../../shared/storage/ca
 import { chromeLocalStorage } from '../../shared/storage/kv'
 import { DEFAULT_SETTINGS, readSettings, writeSettings, type Settings } from '../../shared/storage/settings'
 import { extensionVersion } from '../extensionVersion'
+import { LANGUAGES } from '../languages'
 import { hasHostAccess, keyFor } from '../llmChain'
 
-const LANGUAGES = ['auto', 'English', 'Russian', 'Ukrainian', 'German', 'French', 'Spanish', 'Portuguese', 'Chinese']
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'ok'; text: string } | { kind: 'err'; text: string }
 

@@ -4,6 +4,33 @@ All notable changes to RedBroccoli (called StudHelper up to 0.3.0) are
 documented here. Versions follow the `version` field in
 [package.json](package.json), which is what the side panel header shows.
 
+## [0.5.0] — 2026-10-20
+
+### Lecture notes in plain words, with links for self-study
+
+- **Download notes (.md).** A new button saves the lecture as notes, named
+  after the video ("1. Algorithms and Computation-lecture.md"). Each
+  concept of the map is a chapter, nested as in the tree. Each chapter has:
+  - a timestamp link that opens the video at that moment;
+  - a short explanation in plain words, often with an everyday analogy;
+  - what to learn first;
+  - links for self-study.
+
+  At the top: the video, when the notes were exported, when the map was
+  built, and which AI model built it.
+- **Links for self-study** for every concept: Wikipedia (straight to the
+  article), a YouTube explainer search, and sources that fit the subject —
+  Khan Academy and MathWorld for maths, GeeksforGeeks and CS StackExchange
+  for computer science, and so on. They also appear when you open a concept
+  in the tree, next to its new "In plain words" explanation.
+- **No extra wait or cost.** The explanations come from the same AI request
+  that finds the concepts. On Groq's free tier a one-hour lecture takes about
+  20 seconds longer. The notes file is made in your browser from the saved
+  map, so downloading it again is instant and uses no quota.
+- **Maps you already built stay on screen**, marked "older version". Their
+  notes use the one-line definitions. Press Rebuild to get plain-language
+  explanations.
+
 ## [0.4.0] — 2026-10-17
 
 ### StudHelper is now RedBroccoli 🥦
