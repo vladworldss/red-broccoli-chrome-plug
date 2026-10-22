@@ -60,40 +60,52 @@ button {
 }
 
 /* ---- header ------------------------------------------------------------ */
+/* One header: icon | feature name over the video title | settings. Chrome's
+   own side-panel bar already names the extension, so this one doesn't. */
 .sh-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   background: var(--bg);
   z-index: 2;
 }
-.sh-header h1 {
-  font-size: 14px;
-  margin: 0;
-  flex: 1;
+.sh-header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: block;
 }
-.sh-version {
+.sh-header-text {
+  min-width: 0;
+}
+.sh-header-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.25;
+}
+.sh-header-sub {
+  margin: 1px 0 0;
+  font-size: 12px;
   color: var(--muted);
-  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sh-body {
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
 }
 
-.sh-video-title {
-  font-weight: 600;
-  font-size: 13px;
-  margin: 0;
-}
 .sh-muted {
   color: var(--muted);
 }
@@ -123,6 +135,115 @@ button {
   font-weight: 600;
   padding: 8px 14px;
 }
+.sh-btn-block {
+  width: 100%;
+}
+.sh-btn-secondary {
+  background: var(--bg);
+  border-color: var(--border);
+}
+.sh-btn-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+/* Map actions: the notes download on its own row, then two copies and Rebuild. */
+.sh-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 6px;
+}
+.sh-actions > .sh-btn-block {
+  grid-column: 1 / -1;
+}
+.sh-actions > .sh-btn {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sh-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+/* Subtitles card with a native <details> menu. */
+.sh-subs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.sh-subs-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.sh-subs-head svg {
+  margin-top: 2px;
+  flex: none;
+}
+.sh-disclosure > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.sh-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.sh-disclosure > summary > span:nth-of-type(1) {
+  flex: 1;
+}
+.sh-chevron {
+  display: inline-flex;
+  transition: transform 0.15s ease;
+}
+.sh-disclosure[open] .sh-chevron {
+  transform: rotate(180deg);
+}
+.sh-menu {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+.sh-menu-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+.sh-menu-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.sh-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sh-menu-item svg {
+  margin-top: 2px;
+  flex: none;
+  color: var(--muted);
+}
+.sh-menu-item .sh-muted {
+  display: block;
+}
+
 .sh-btn-link {
   border: none;
   background: none;
@@ -321,7 +442,8 @@ textarea.sh-input {
 
 .sh-mindmap {
   width: 100%;
-  height: calc(100vh - 210px);
+  /* Header + meta + two action rows + tabs ≈ 170px since the compact header. */
+  height: calc(100vh - 170px);
   min-height: 320px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -349,6 +471,11 @@ svg.sh-mindmap.markmap {
   max-width: 640px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+}
+.sh-options-footer {
+  margin-top: 40px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 .sh-options h1 {
   font-size: 20px;

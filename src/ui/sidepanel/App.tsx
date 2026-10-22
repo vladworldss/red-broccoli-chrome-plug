@@ -13,6 +13,7 @@ import {
 import { referenceLinks } from '../../contexts/references'
 import { watchUrl, type CaptureResult } from '../../contexts/video-capture'
 import { extensionVersion } from '../extensionVersion'
+import { GearIcon, RefreshIcon } from '../icons'
 import { ConceptTree } from './ConceptTree'
 import { MindMap } from './MindMap'
 import { TranscriptDownload } from './TranscriptDownload'
@@ -24,7 +25,7 @@ import { usePanel, type BuildFailure, type VideoRef, type View } from './usePane
 
 export function App() {
   const { view, settings, build, cancel, seek, getTranscript, refresh } = usePanel()
-  const version = useMemo(extensionVersion, [])
+  const iconUrl = useMemo(headerIconUrl, [])
   const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
@@ -42,14 +43,30 @@ export function App() {
   )
 
   const hasKey = settings ? hasAnyProvider(settings) : false
+  const video = 'video' in view ? view.video : null
 
   return (
     <div className="sh-app">
+      {/* Chrome's own side-panel bar already shows "RedBroccoli" and its icon, so
+          this header names the feature and the video instead. The version lives
+          at the bottom of Settings. */}
       <header className="sh-header">
-        <h1>RedBroccoli</h1>
-        <span className="sh-version">v{version}</span>
-        <button className="sh-btn" onClick={() => chrome.runtime.openOptionsPage()} title="Settings">
-          ⚙
+        {iconUrl ? <img className="sh-header-icon" src={iconUrl} alt="" /> : <span />}
+        <div className="sh-header-text">
+          <h1 className="sh-header-title">Lecture Concept Maps</h1>
+          {video && (
+            <p className="sh-header-sub" title={video.title}>
+              {video.title || video.videoId}
+            </p>
+          )}
+        </div>
+        <button
+          className="sh-btn sh-btn-icon"
+          onClick={() => chrome.runtime.openOptionsPage()}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <GearIcon />
         </button>
       </header>
 
@@ -111,7 +128,6 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
     case 'ready':
       return (
         <>
-          <VideoHeader video={view.video} />
           {!hasKey && <KeyNotice />}
           <div className="sh-card">
             <p style={{ marginTop: 0 }}>
@@ -132,7 +148,6 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
     case 'capturing':
       return (
         <>
-          <VideoHeader video={view.video} />
           <Progress text="Reading the transcript…" onCancel={onCancel} />
           <p className="sh-muted sh-small">Captions may switch on for a moment while they load.</p>
         </>
@@ -141,7 +156,6 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
     case 'no-captions':
       return (
         <>
-          <VideoHeader video={view.video} />
           <PasteFallback
             intro="Couldn't read captions for this video automatically."
             onSubmit={(text) => onBuild(view.video, { pasted: text })}
@@ -163,7 +177,6 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
             : 'Linking concepts…'
       return (
         <>
-          <VideoHeader video={view.video} />
           <Progress text={text} onCancel={onCancel} />
           {view.note && <p className="sh-small sh-muted">{view.note}</p>}
           {view.wait && <PacingNote provider={view.wait.provider} until={view.wait.until} />}
@@ -192,7 +205,6 @@ function Body({ view, hasKey, onBuild, onCancel, onRefresh, onSeek, onToast, get
     case 'error':
       return (
         <>
-          <VideoHeader video={view.video} />
           <div className="sh-card sh-error" role="alert">
             <strong>Something went wrong</strong>
             <p style={{ whiteSpace: 'pre-line' }}>{view.message}</p>
@@ -225,8 +237,15 @@ function HelpLink({ help }: { help: NonNullable<BuildFailure['help']> }) {
   )
 }
 
-function VideoHeader({ video }: { video: VideoRef }) {
-  return <p className="sh-video-title">{video.title || video.videoId}</p>
+/** The extension's own icon; Plasmo hashes its file names, so ask the manifest. */
+function headerIconUrl(): string | null {
+  try {
+    const icons = chrome.runtime.getManifest().icons as Record<string, string> | undefined
+    const path = icons?.['48'] ?? icons?.['32']
+    return path ? chrome.runtime.getURL(path) : null
+  } catch {
+    return null // extension context gone (reloaded while the panel stayed open)
+  }
 }
 
 function KeyNotice() {
@@ -404,10 +423,8 @@ function MapView({
         </div>
       )}
 
-      <div>
-        <p className="sh-video-title">{tree.topic || video.title}</p>
-        <div className="sh-row sh-small sh-muted">
-          <span>{map.concepts.length} concepts</span>
+      <div className="sh-meta sh-small sh-muted">
+        <span title={tree.topic || undefined}>{map.concepts.length} concepts</span>
           {fromCache && <span className="sh-badge">cached</span>}
           <span className="sh-badge" title={`Prompt ${map.promptVersion}`}>
             {describeModels(map.model)}
@@ -417,31 +434,32 @@ function MapView({
               older version
             </span>
           )}
-          {!map.timed && <span className="sh-badge">no timestamps</span>}
-        </div>
+        {!map.timed && <span className="sh-badge">no timestamps</span>}
       </div>
 
-      <div className="sh-row">
+      <div className="sh-actions">
         <button
-          className="sh-btn sh-btn-primary"
+          className="sh-btn sh-btn-primary sh-btn-block"
           onClick={downloadNotes}
           title="Plain-language notes: one chapter per concept, with timestamps and links for self-study"
         >
           Download notes (.md)
         </button>
-      </div>
-      <div className="sh-row">
-        <button className="sh-btn" onClick={() => void copy('md')}>
+        <button className="sh-btn sh-btn-secondary" onClick={() => void copy('md')}>
           Copy Markdown
         </button>
-        <button className="sh-btn" onClick={() => void copy('mermaid')}>
+        <button className="sh-btn sh-btn-secondary" onClick={() => void copy('mermaid')}>
           Copy Mermaid
         </button>
-        <button className="sh-btn" onClick={onRebuild} title="Ask the AI again, ignoring the cache">
-          Rebuild
+        <button
+          className="sh-btn sh-btn-secondary sh-btn-icon"
+          onClick={onRebuild}
+          title="Rebuild — ask the AI again, ignoring the cache"
+          aria-label="Rebuild"
+        >
+          <RefreshIcon />
         </button>
       </div>
-      <TranscriptDownload video={video} getTranscript={getTranscript} onToast={onToast} />
 
       <div className="sh-tabs" role="tablist">
         <button className="sh-tab" role="tab" aria-selected={tab === 'tree'} onClick={() => setTab('tree')}>
@@ -457,6 +475,9 @@ function MapView({
       ) : (
         <MindMap tree={tree} onSeek={onSeek} />
       )}
+
+      {/* Secondary: below the map, which is what the panel is for. */}
+      <TranscriptDownload video={video} getTranscript={getTranscript} onToast={onToast} />
     </>
   )
 }

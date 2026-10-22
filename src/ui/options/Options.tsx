@@ -139,7 +139,6 @@ export function Options() {
   return (
     <main className="sh-options">
       <h1>RedBroccoli settings</h1>
-      <p className="sh-muted">Version {version}</p>
 
       <section>
         <h2>AI providers</h2>
@@ -226,6 +225,10 @@ export function Options() {
           </li>
         </ul>
       </section>
+
+      {/* The loaded build's version: the panel no longer shows it (Chrome's own
+          side-panel bar already names the extension). */}
+      <footer className="sh-options-footer sh-small sh-muted">RedBroccoli v{version}</footer>
     </main>
   )
 }
