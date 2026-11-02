@@ -1,4 +1,4 @@
-# Chrome Web Store listing — RedBroccoli 0.5.0
+# Chrome Web Store listing — RedBroccoli 0.6.0
 
 ## Basics
 
@@ -72,7 +72,13 @@ notes, never as "download from YouTube".
       `assets/icon.png` (`sips -z 128 128 assets/icon.png --out …`). Upload it
       by hand in the listing form; it is not inside the zip.
 - [ ] 1–5 screenshots at 1280×800: the panel with a map, the mind map, settings.
-- [ ] Small promo tile, 440×280.
+- [x] Small promo tile, 440×280: `docs/store/images/promo-440x280.png`, made by
+      `swift scripts/store-promo.swift assets/icon.png docs/store/images/promo-440x280.png`.
+      Upload it by hand in the listing form; it is not inside the zip.
+- [x] Marquee promo, 1400×560: `docs/store/images/promo-1400x560.png`, made by
+      `swift scripts/store-promo.swift assets/icon.png docs/store/images/promo-1400x560.png FFFFFF 16191F E0201B 1400x560`
+      (the colors are positional, so they must come before the size).
+      Upload it by hand in the listing form; it is not inside the zip.
 
 ## Release steps
 

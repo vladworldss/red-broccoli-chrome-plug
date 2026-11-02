@@ -63,10 +63,11 @@ make build          # → build/chrome-mv3-prod
 
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. Click **Load unpacked** and pick `build/chrome-mv3-prod`.
-3. Click the extension icon → ⚙ (Settings), then add at least one key
-   (each provider row has a "Get a key ↗" link). For example, a Gemini key from
-   [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-   Press **Test key**, then **Save**.
+3. Click the extension icon → ⚙ (Settings), then paste at least one key
+   (open a provider to see its "Get a key ↗" link). For example, a Gemini key
+   from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+   Settings save automatically; press **Test** to check the key (for Groq,
+   Mistral, OpenRouter and DeepSeek it also asks Chrome for access).
 4. Open a YouTube lecture and click the extension icon to open the side panel.
 
 YouTube tabs that were open **before** you installed or reloaded the extension

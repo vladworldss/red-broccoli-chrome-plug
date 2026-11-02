@@ -10,6 +10,7 @@
   --danger: #b42318;
   --danger-soft: #fdecea;
   --ok: #1f7a3d;
+  --warn: #b54708;
   --chip: #eef1f6;
   --radius: 8px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
@@ -30,6 +31,7 @@
     --danger: #ff8a80;
     --danger-soft: #3a1f1f;
     --ok: #6fcf8f;
+    --warn: #f5b454;
     --chip: #262b35;
     color-scheme: dark;
   }
@@ -467,26 +469,58 @@ svg.sh-mindmap.markmap {
 }
 
 /* ---- options ----------------------------------------------------------- */
+/* Type scale: 20 page title · 15 section · 14 provider name · 13 body ·
+   12 hints, labels and status. Secondary text is --muted, never --accent. */
 .sh-options {
   max-width: 640px;
   margin: 0 auto;
   padding: 24px 16px 48px;
+}
+.sh-options-head {
+  margin-bottom: 20px;
+}
+.sh-options h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.sh-options h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.sh-section + .sh-section {
+  margin-top: 28px;
+}
+.sh-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+.sh-list {
+  padding-left: 18px;
+}
+.sh-list li + li {
+  margin-top: 4px;
 }
 .sh-options-footer {
   margin-top: 40px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
-.sh-options h1 {
-  font-size: 20px;
-}
 .sh-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 16px;
+}
+.sh-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
 }
 .sh-field label {
+  font-size: 12px;
   font-weight: 600;
 }
 .sh-status-ok {
@@ -495,16 +529,157 @@ svg.sh-mindmap.markmap {
 .sh-status-err {
   color: var(--danger);
 }
+.sh-quiet-link {
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.sh-quiet-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.sh-btn-ghost {
+  border: none;
+  background: none;
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.sh-btn-ghost:hover:not(:disabled) {
+  background: var(--chip);
+  color: var(--fg);
+}
+.sh-btn-ghost:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Key input with Show/Hide inside its border, so the row holds one control. */
+.sh-input-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding-right: 2px;
+}
+.sh-input-group:focus-within {
+  border-color: var(--accent);
+}
+.sh-input-group > input.sh-input {
+  border: none;
+  background: none;
+  outline: none;
+  min-width: 0;
+}
+.sh-input-group > .sh-btn-ghost {
+  font-size: 12px;
+  flex: none;
+}
 
 /* ---- provider list (options) ------------------------------------------- */
 .sh-providers {
   list-style: none;
   padding: 0;
-  margin: 0 0 16px;
+  margin: 0 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow: hidden;
+}
+.sh-provider + .sh-provider {
+  border-top: 1px solid var(--border);
+}
+.sh-provider-open {
+  background: var(--bg-soft);
+}
+.sh-provider-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 8px 12px;
+  min-height: 44px;
+}
+.sh-provider-head > input[type='checkbox'] {
+  margin: 0;
+  flex: none;
+}
+.sh-provider-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  padding: 4px 0;
+  text-align: left;
+}
+.sh-provider-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sh-provider-toggle .sh-chevron {
+  color: var(--muted);
+}
+.sh-provider-open .sh-chevron {
+  transform: rotate(180deg);
+}
+.sh-reorder {
+  display: flex;
+  flex: none;
+}
+.sh-reorder > .sh-btn-ghost {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.sh-provider-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  padding: 0 12px 14px 36px;
 }
-.sh-provider .sh-field {
-  margin-bottom: 8px;
+.sh-provider-body > .sh-hint {
+  margin: -4px 0 0;
+}
+.sh-provider-body p {
+  margin: 0;
+}
+
+/* One status per provider: a dot and a word, not a chip. */
+.sh-readiness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sh-readiness::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.sh-readiness-ready {
+  color: var(--ok);
+}
+.sh-readiness-ready::before {
+  background: var(--ok);
+}
+.sh-readiness-no-key,
+.sh-readiness-no-access {
+  color: var(--warn);
+}
+.sh-readiness-no-key::before,
+.sh-readiness-no-access::before {
+  background: var(--warn);
+}
+.sh-save {
+  font-size: 12px;
+  color: var(--muted);
+  flex: none;
 }

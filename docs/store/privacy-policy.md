@@ -1,6 +1,6 @@
 # RedBroccoli — Privacy Policy
 
-_Last updated: 2026-10-17 · applies to version 0.1.0 and later_
+_Last updated: 2026-10-30 · applies to version 0.1.0 and later_
 
 RedBroccoli ("the extension") builds study concept maps from lecture videos you
 watch on YouTube. This policy explains what data it handles.
@@ -49,7 +49,7 @@ Mistral for its free plan. Check the terms of the providers you enable.
 | `sidePanel` | Show the concept map next to the video |
 | `storage` | Save your settings, API key and cached maps locally |
 | Host access to `https://generativelanguage.googleapis.com/*` | Send the transcript to Google Gemini (or Gemma) when you press Build map |
-| Optional host access to `api.mistral.ai`, `api.groq.com`, `openrouter.ai`, `api.deepseek.com` | Requested only when you enable that provider in Settings; used only to send the transcript to it |
+| Optional host access to `api.mistral.ai`, `api.groq.com`, `openrouter.ai`, `api.deepseek.com` | Requested only when you test that provider in Settings; used only to send the transcript to it |
 
 ## Your control
 
