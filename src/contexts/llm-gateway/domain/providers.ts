@@ -67,7 +67,7 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     outputReserveTokens: 4000,
     maxInputChars: 120_000,
     timeoutMs: 120_000,
-    note: 'Free tier; small daily quota.',
+    note: 'Free · small daily quota',
     paid: false,
   },
   mistral: {
@@ -85,7 +85,7 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     outputReserveTokens: 4000,
     maxInputChars: 120_000,
     timeoutMs: 150_000,
-    note: 'Free "Experiment" plan (phone verification; may train on free-tier data).',
+    note: 'Free plan · needs phone verification · may train on free-tier data',
     paid: false,
   },
   groq: {
@@ -109,7 +109,7 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     timeoutMs: 120_000,
     // gpt-oss reasons before answering; "low" keeps that inside the TPM budget.
     extraBody: { reasoning_effort: 'low' },
-    note: 'Free and fast; ~1000 requests/day, small per-minute token budget (long lectures go in parts).',
+    note: 'Free · fast · ~1000 requests/day; long lectures run in parts',
     paid: false,
   },
   openrouter: {
@@ -127,7 +127,7 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     outputReserveTokens: 4000,
     maxInputChars: 120_000,
     timeoutMs: 180_000,
-    note: 'Free ":free" models; 50 requests/day (1000 after a one-time $10 credit). Free models change often.',
+    note: 'Free models · 50 requests/day (1000 after a $10 credit)',
     paid: false,
   },
   gemma: {
@@ -147,7 +147,7 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     maxInputChars: 40_000,
     // Measured: ~80 s for a one-line prompt. Slow, so it runs last.
     timeoutMs: 300_000,
-    note: 'Uses your Gemini key with a separate quota. Very slow (minutes per lecture).',
+    note: 'Free · own quota on your Gemini key · minutes per lecture',
     paid: false,
   },
   deepseek: {
@@ -164,15 +164,19 @@ export const PROVIDERS: Record<ProviderId, ProviderPreset> = {
     outputReserveTokens: 4000,
     maxInputChars: 120_000,
     timeoutMs: 150_000,
-    note: 'Paid but very cheap (about $0.003 per lecture). No free tier.',
+    note: 'Paid · about $0.003 per lecture',
     paid: true,
   },
 }
 
 export const PROVIDER_IDS = Object.keys(PROVIDERS) as ProviderId[]
 
-/** Default fallback order. The user stressed Mistral, so it is the first fallback. */
-export const DEFAULT_ORDER: ProviderId[] = ['gemini', 'mistral', 'groq', 'openrouter', 'gemma', 'deepseek']
+/**
+ * Default fallback order, which is also the order Settings lists them in: the
+ * free providers people set up most (Gemini, Groq, Mistral) first, slow Gemma
+ * and paid DeepSeek last. Users who reordered keep their own order.
+ */
+export const DEFAULT_ORDER: ProviderId[] = ['gemini', 'groq', 'mistral', 'openrouter', 'gemma', 'deepseek']
 
 export function isProviderId(v: unknown): v is ProviderId {
   return typeof v === 'string' && v in PROVIDERS

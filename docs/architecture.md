@@ -18,7 +18,7 @@ Side panel (extension page): composition root, src/ui/sidepanel/usePanel.ts
  ├─ captureTranscript: cache → intercept → DOM panel → (user paste)
  ├─ buildConceptMap:   cache → chunk → extract → merge → relate → map → cache
  │     └─ LlmPort = FallbackLlm(order from Settings)
- │          Gemini ─▶ Mistral ─▶ Groq ─▶ OpenRouter ─▶ Gemma ─▶ DeepSeek
+ │          Gemini ─▶ Groq ─▶ Mistral ─▶ OpenRouter ─▶ Gemma ─▶ DeepSeek
  │          (each: retries, timeout, pacing; on failure the next one, with a cooldown)
  └─ render: ConceptTree (list) | MindMap (markmap-view) ; Copy Markdown/Mermaid
 Service worker: only setPanelBehavior({openPanelOnActionClick: true})

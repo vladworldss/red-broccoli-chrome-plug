@@ -34,6 +34,19 @@ export function hasAnyProvider(settings: Settings): boolean {
   return settings.order.some((id) => isConfigured(settings, id))
 }
 
+/**
+ * The one status a provider row shows in Settings, in the order a user fixes
+ * them: turn it on, add a key, allow access. `ready` = `buildChain` uses it.
+ */
+export type Readiness = 'off' | 'no-key' | 'no-access' | 'ready'
+
+export function readiness(settings: Settings, id: ProviderId, access: boolean): Readiness {
+  if (!settings.providers[id].enabled) return 'off'
+  // The draft on the Settings page is untrimmed; storage trims on write.
+  if (!keyFor(settings, id).trim()) return 'no-key'
+  return access ? 'ready' : 'no-access'
+}
+
 /** Host access for providers declared as optional permissions. */
 export async function hasHostAccess(id: ProviderId): Promise<boolean> {
   const preset = PROVIDERS[id]

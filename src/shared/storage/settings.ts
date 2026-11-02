@@ -18,7 +18,7 @@ import { isRecord, type ChangeListener, type KeyValueStorage } from './kv'
  * llm-gateway context, so this mirrors `DEFAULT_ORDER` in
  * contexts/llm-gateway/domain/providers.ts — a unit test keeps them equal.
  */
-export const SETTINGS_PROVIDER_ORDER = ['gemini', 'mistral', 'groq', 'openrouter', 'gemma', 'deepseek'] as const
+export const SETTINGS_PROVIDER_ORDER = ['gemini', 'groq', 'mistral', 'openrouter', 'gemma', 'deepseek'] as const
 export type SettingsProviderId = (typeof SETTINGS_PROVIDER_ORDER)[number]
 
 export type ProviderSettings = {

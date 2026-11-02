@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   LlmError,
@@ -12,11 +12,20 @@ import { cacheUsage, clearCache, type CacheUsage } from '../../shared/storage/ca
 import { chromeLocalStorage } from '../../shared/storage/kv'
 import { DEFAULT_SETTINGS, readSettings, writeSettings, type Settings } from '../../shared/storage/settings'
 import { extensionVersion } from '../extensionVersion'
+import { ChevronIcon } from '../icons'
 import { LANGUAGES } from '../languages'
-import { hasHostAccess, keyFor } from '../llmChain'
-
+import { hasAnyProvider, hasHostAccess, keyFor, readiness, requestHostAccess, type Readiness } from '../llmChain'
+import { createAutosaver, type SaveState } from './autosave'
 
 type Status = { kind: 'idle' } | { kind: 'busy' } | { kind: 'ok'; text: string } | { kind: 'err'; text: string }
+
+/** What the last change touched, so its save state shows where the user is looking. */
+type SaveScope = ProviderId | 'language'
+
+/** Long enough to cover a burst of typing, short enough that closing the tab rarely beats it. */
+const TYPING_DEBOUNCE_MS = 400
+/** "Saved" is a confirmation, not a state to keep on screen. */
+const SAVED_VISIBLE_MS = 2000
 
 /** Settings ids are plain strings; the presets are typed. They are kept equal by a unit test. */
 const ids = (s: Settings): ProviderId[] => s.order.filter(isProviderId)
@@ -25,11 +34,24 @@ export function Options() {
   const storage = useMemo(() => chromeLocalStorage(), [])
   const version = useMemo(extensionVersion, [])
   const [draft, setDraft] = useState<Settings>(DEFAULT_SETTINGS)
+  // Handlers read the latest draft from here; setState callbacks must stay pure.
+  const draftRef = useRef<Settings>(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [access, setAccess] = useState<Partial<Record<ProviderId, boolean>>>({})
-  const [saveStatus, setSaveStatus] = useState<Status>({ kind: 'idle' })
+  const [open, setOpen] = useState<ReadonlySet<ProviderId>>(new Set())
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [saveScope, setSaveScope] = useState<SaveScope | null>(null)
   const [testStatus, setTestStatus] = useState<Partial<Record<ProviderId, Status>>>({})
   const [usage, setUsage] = useState<CacheUsage | null>(null)
+
+  const saver = useMemo(
+    () =>
+      createAutosaver<Settings>(
+        (s) => writeSettings(storage, { providers: s.providers, order: s.order, outputLanguage: s.outputLanguage }),
+        { delayMs: TYPING_DEBOUNCE_MS, onState: setSaveState },
+      ),
+    [storage],
+  )
 
   const refreshUsage = useCallback(async () => {
     if (storage) setUsage(await cacheUsage(storage).catch(() => null))
@@ -43,81 +65,88 @@ export function Options() {
 
   useEffect(() => {
     void readSettings(storage).then((s) => {
+      draftRef.current = s
       setDraft(s)
       setLoaded(true)
+      // First visit: open the first enabled provider so its key field is right there.
+      const first = hasAnyProvider(s) ? undefined : ids(s).find((id) => s.providers[id].enabled)
+      if (first) setOpen(new Set([first]))
     })
     void refreshUsage()
     void refreshAccess()
   }, [storage, refreshUsage, refreshAccess])
 
-  const patchProvider = (id: ProviderId, patch: Partial<Settings['providers'][ProviderId]>) => {
-    setSaveStatus({ kind: 'idle' })
-    setDraft((d) => {
-      const prev = d.providers[id]
-      const next = { ...prev, ...patch }
-      // Typing a key into a provider turns it on — the obvious intent.
-      if (patch.apiKey !== undefined && !prev.apiKey && patch.apiKey.trim()) next.enabled = true
-      return { ...d, providers: { ...d.providers, [id]: next } }
+  // A debounced change must not be lost when the tab is closed or switched away from.
+  useEffect(() => {
+    const flush = () => void saver.flush()
+    const onVisibility = () => document.visibilityState === 'hidden' && flush()
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [saver])
+
+  useEffect(() => {
+    if (saveState !== 'saved') return
+    const t = setTimeout(() => setSaveState((s) => (s === 'saved' ? 'idle' : s)), SAVED_VISIBLE_MS)
+    return () => clearTimeout(t)
+  }, [saveState])
+
+  const commit = (next: Settings, scope: SaveScope, when: 'typing' | 'now') => {
+    draftRef.current = next
+    setDraft(next)
+    setSaveScope(scope)
+    if (when === 'typing') saver.schedule(next)
+    else void saver.now(next)
+  }
+
+  const toggleOpen = (id: ProviderId, force?: boolean) =>
+    setOpen((prev) => {
+      const next = new Set(prev)
+      if (force ?? !next.has(id)) next.add(id)
+      else next.delete(id)
+      return next
     })
+
+  const patchProvider = (id: ProviderId, patch: Partial<Settings['providers'][ProviderId]>) => {
+    const d = draftRef.current
+    const prev = d.providers[id]
+    const cfg = { ...prev, ...patch }
+    // Typing a key into a provider turns it on — the obvious intent.
+    if (patch.apiKey !== undefined && !prev.apiKey && patch.apiKey.trim()) cfg.enabled = true
+    if (patch.enabled) toggleOpen(id, true)
+    // "Works with …" said nothing about the key or model now in the field.
+    if (patch.apiKey !== undefined || patch.model !== undefined) setTestStatus((t) => ({ ...t, [id]: { kind: 'idle' } }))
+    commit({ ...d, providers: { ...d.providers, [id]: cfg } }, id, patch.enabled === undefined ? 'typing' : 'now')
   }
 
   const move = (id: ProviderId, delta: -1 | 1) => {
-    setSaveStatus({ kind: 'idle' })
-    setDraft((d) => {
-      const order = [...d.order]
-      const i = order.indexOf(id)
-      const j = i + delta
-      if (i < 0 || j < 0 || j >= order.length) return d
-      ;[order[i], order[j]] = [order[j]!, order[i]!]
-      return { ...d, order }
-    })
+    const d = draftRef.current
+    const order = [...d.order]
+    const i = order.indexOf(id)
+    const j = i + delta
+    if (i < 0 || j < 0 || j >= order.length) return
+    ;[order[i], order[j]] = [order[j]!, order[i]!]
+    commit({ ...d, order }, id, 'now')
   }
 
   /**
-   * Save also asks Chrome for access to every enabled provider that doesn't
-   * have it yet — in ONE prompt, and inside this click, as Chrome requires.
+   * Asks Chrome for host access first: it must happen inside this click, and an
+   * `await` before it could spend the user gesture. The key is already saved.
    */
-  const save = async () => {
-    setSaveStatus({ kind: 'busy' })
-    const missing = ids(draft).filter(
-      (id) => PROVIDERS[id].optionalHost && draft.providers[id].enabled && !access[id],
-    )
-    let denied: string[] = []
-    if (missing.length > 0) {
-      try {
-        const granted = await chrome.permissions.request({ origins: missing.map((id) => PROVIDERS[id].host) })
-        if (!granted) denied = missing.map((id) => PROVIDERS[id].label)
-      } catch {
-        denied = missing.map((id) => PROVIDERS[id].label)
-      }
-    }
-    try {
-      const next = await writeSettings(storage, {
-        providers: draft.providers,
-        order: draft.order,
-        outputLanguage: draft.outputLanguage,
-      })
-      setDraft(next)
-      await refreshAccess()
-      setSaveStatus(
-        denied.length > 0
-          ? { kind: 'err', text: `Saved, but access was not allowed for ${denied.join(', ')} — they will be skipped.` }
-          : { kind: 'ok', text: 'Saved' },
-      )
-    } catch (err) {
-      setSaveStatus({ kind: 'err', text: err instanceof Error ? err.message : 'Could not save' })
-    }
-  }
-
   const test = async (id: ProviderId) => {
     setTestStatus((t) => ({ ...t, [id]: { kind: 'busy' } }))
     try {
       if (PROVIDERS[id].optionalHost && !access[id]) {
-        const granted = await chrome.permissions.request({ origins: [PROVIDERS[id].host] })
+        const granted = await requestHostAccess(id)
         await refreshAccess()
-        if (!granted) throw new Error('Access to this provider was not allowed.')
+        if (!granted) throw new Error('Access was not allowed, so RedBroccoli will skip this provider.')
       }
-      const adapter = createAdapter(id, { apiKey: keyFor(draft, id), model: draft.providers[id].model })
+      void saver.flush()
+      const d = draftRef.current
+      const adapter = createAdapter(id, { apiKey: keyFor(d, id).trim(), model: d.providers[id].model.trim() })
       await adapter.testKey()
       setTestStatus((t) => ({ ...t, [id]: { kind: 'ok', text: `Works with ${adapter.model}` } }))
     } catch (err) {
@@ -135,16 +164,19 @@ export function Options() {
   }
 
   const order = ids(draft)
+  const saveFor = (scope: SaveScope) => (saveScope === scope ? saveState : 'idle')
 
   return (
     <main className="sh-options">
-      <h1>RedBroccoli settings</h1>
+      <header className="sh-options-head">
+        <h1>RedBroccoli settings</h1>
+        <p className="sh-small sh-muted">Changes save automatically.</p>
+      </header>
 
-      <section>
+      <section className="sh-section">
         <h2>AI providers</h2>
-        <p className="sh-small">
-          RedBroccoli uses an AI model to find the concepts in a lecture. Add a free key for one or more providers. When
-          one runs out of quota or fails, the next one in this list builds the map automatically.
+        <p className="sh-hint">
+          Add a key for at least one provider. If one fails or runs out of quota, the next one in the list takes over.
         </p>
 
         <ol className="sh-providers">
@@ -156,23 +188,38 @@ export function Options() {
               last={i === order.length - 1}
               settings={draft}
               disabled={!loaded}
-              access={access[id] ?? !PROVIDERS[id].optionalHost}
+              open={open.has(id)}
+              readiness={readiness(draft, id, access[id] ?? !PROVIDERS[id].optionalHost)}
+              saveState={saveFor(id)}
               status={testStatus[id] ?? { kind: 'idle' }}
+              onToggle={() => toggleOpen(id)}
+              onOpenKeySource={() => toggleOpen(PROVIDERS[id].keySource, true)}
               onPatch={(patch) => patchProvider(id, patch)}
+              onFieldBlur={() => void saver.flush()}
               onMove={(delta) => move(id, delta)}
               onTest={() => void test(id)}
+              onRetrySave={() => void saver.flush()}
             />
           ))}
         </ol>
+        <p className="sh-hint">
+          Keys stay in this Chrome profile, unencrypted and not synced. Only RedBroccoli's own pages read them, never
+          YouTube or any web page.
+        </p>
+      </section>
 
+      <section className="sh-section">
         <div className="sh-field">
-          <label htmlFor="lang">Map language</label>
+          <div className="sh-field-head">
+            <label htmlFor="lang">Map language</label>
+            <SaveIndicator state={saveFor('language')} onRetry={() => void saver.flush()} />
+          </div>
           <select
             id="lang"
             className="sh-input"
             value={LANGUAGES.includes(draft.outputLanguage) ? draft.outputLanguage : 'auto'}
             disabled={!loaded}
-            onChange={(e) => setDraft({ ...draft, outputLanguage: e.target.value })}
+            onChange={(e) => commit({ ...draftRef.current, outputLanguage: e.target.value }, 'language', 'now')}
           >
             {LANGUAGES.map((l) => (
               <option key={l} value={l}>
@@ -181,47 +228,34 @@ export function Options() {
             ))}
           </select>
         </div>
-
-        <div className="sh-row">
-          <button
-            className="sh-btn sh-btn-primary"
-            disabled={!loaded || saveStatus.kind === 'busy'}
-            onClick={() => void save()}
-          >
-            Save
-          </button>
-          <StatusText status={saveStatus} />
-        </div>
-        <p className="sh-small sh-muted">
-          Keys are stored unencrypted in this Chrome profile only (not synced). Only this extension's pages read them —
-          they are never given to YouTube or any web page.
-        </p>
       </section>
 
-      <section style={{ marginTop: 32 }}>
+      <section className="sh-section">
         <h2>Cache</h2>
-        <p className="sh-small">
-          Transcripts and maps are kept in this browser so reopening a video is instant and costs no API calls.
+        <p className="sh-hint">
+          Transcripts and maps stay in this browser, so reopening a video is instant and uses no quota.
         </p>
-        <p className="sh-small sh-muted">
-          {usage ? `${usage.videos} video(s), ${(usage.bytes / 1024).toFixed(0)} KB used` : '—'}
-        </p>
-        <button className="sh-btn" onClick={() => void clear()}>
-          Clear cache
-        </button>
+        <div className="sh-row">
+          <button className="sh-btn" onClick={() => void clear()}>
+            Clear cache
+          </button>
+          <span className="sh-small sh-muted">
+            {usage ? `${usage.videos} video(s), ${(usage.bytes / 1024).toFixed(0)} KB` : '—'}
+          </span>
+        </div>
       </section>
 
-      <section style={{ marginTop: 32 }}>
+      <section className="sh-section">
         <h2>Where your data goes</h2>
-        <ul className="sh-small">
+        <ul className="sh-hint sh-list">
           <li>
-            When you press “Build map”, the video's title and transcript are sent to the first provider in your list that
-            is enabled and has a key — and, only if it fails, to the next ones, in order.
+            When you press “Build map”, the video's title and transcript go to the first provider in your list that is
+            on and has a key — and, only if it fails, to the next ones, in order.
           </li>
-          <li>Nothing is sent anywhere else. RedBroccoli has no server and collects no analytics.</li>
+          <li>Nothing goes anywhere else. RedBroccoli has no server and collects no analytics.</li>
           <li>
-            Free tiers may let the provider use submitted content to improve its products (Google and Mistral say so
-            for their free plans). Check each provider's terms.
+            Free tiers may let the provider use what you send to improve its products (Google and Mistral say so for
+            their free plans). Check each provider's terms.
           </li>
         </ul>
       </section>
@@ -239,87 +273,188 @@ type RowProps = {
   last: boolean
   settings: Settings
   disabled: boolean
-  access: boolean
+  open: boolean
+  readiness: Readiness
+  saveState: SaveState
   status: Status
+  onToggle: () => void
+  onOpenKeySource: () => void
   onPatch: (patch: Partial<Settings['providers'][ProviderId]>) => void
+  onFieldBlur: () => void
   onMove: (delta: -1 | 1) => void
   onTest: () => void
+  onRetrySave: () => void
 }
 
-function ProviderRow({ id, position, last, settings, disabled, access, status, onPatch, onMove, onTest }: RowProps) {
+/**
+ * Collapsed: checkbox, name, one status, reorder. Expanded: key, model, Test.
+ * The checkbox sits outside the expand button: no nested interactive controls.
+ */
+function ProviderRow(props: RowProps) {
+  const { id, position, last, settings, disabled, open, readiness, saveState, status } = props
   const preset = PROVIDERS[id]
   const cfg = settings.providers[id]
   const sharesKey = preset.keySource !== id
-  const key = keyFor(settings, id)
+  const key = keyFor(settings, id).trim()
   const [showKey, setShowKey] = useState(false)
+  const bodyId = `sh-provider-${id}`
 
   return (
-    <li className="sh-provider sh-card">
-      <div className="sh-row">
-        <label className="sh-row" style={{ gap: 6, flex: 1 }}>
-          <input
-            type="checkbox"
-            checked={cfg.enabled}
-            disabled={disabled}
-            onChange={(e) => onPatch({ enabled: e.target.checked })}
-          />
-          <strong>{preset.label}</strong>
-          {preset.paid && <span className="sh-badge">paid</span>}
-          {preset.optionalHost && cfg.enabled && !access && <span className="sh-badge">access on Save</span>}
-        </label>
-        <button className="sh-btn" disabled={disabled || position === 0} onClick={() => onMove(-1)} title="Earlier in the chain">
-          ↑
+    <li className={`sh-provider${open ? ' sh-provider-open' : ''}`}>
+      <div className="sh-provider-head">
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          disabled={disabled}
+          onChange={(e) => props.onPatch({ enabled: e.target.checked })}
+          aria-label={`Use ${preset.label}`}
+        />
+        <button
+          type="button"
+          className="sh-provider-toggle"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={props.onToggle}
+        >
+          <span className="sh-provider-name">{preset.label}</span>
+          <span className="sh-chevron" aria-hidden="true">
+            <ChevronIcon size={14} />
+          </span>
         </button>
-        <button className="sh-btn" disabled={disabled || last} onClick={() => onMove(1)} title="Later in the chain">
-          ↓
-        </button>
+        <SaveIndicator state={saveState} onRetry={props.onRetrySave} />
+        <ReadinessText readiness={readiness} keySource={sharesKey ? PROVIDERS[preset.keySource].label : null} />
+        <div className="sh-reorder">
+          <button
+            type="button"
+            className="sh-btn-ghost"
+            disabled={disabled || position === 0}
+            onClick={() => props.onMove(-1)}
+            aria-label={`Move ${preset.label} up`}
+            title="Try earlier"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="sh-btn-ghost"
+            disabled={disabled || last}
+            onClick={() => props.onMove(1)}
+            aria-label={`Move ${preset.label} down`}
+            title="Try later"
+          >
+            ↓
+          </button>
+        </div>
       </div>
-      <p className="sh-small sh-muted" style={{ margin: '4px 0 8px' }}>
-        {preset.note}
-      </p>
 
-      {sharesKey ? (
-        <p className="sh-small">Uses your {PROVIDERS[preset.keySource].label} key{key ? '' : ' (not set yet)'}.</p>
-      ) : (
-        <div className="sh-field">
-          <div className="sh-row" style={{ flexWrap: 'nowrap' }}>
+      {open && (
+        <div className="sh-provider-body" id={bodyId}>
+          <p className="sh-hint">{preset.note}</p>
+
+          {sharesKey ? (
+            <p className="sh-small">
+              Uses your {PROVIDERS[preset.keySource].label} key.{' '}
+              {!key && (
+                <button type="button" className="sh-btn-link" onClick={props.onOpenKeySource}>
+                  Add it under {PROVIDERS[preset.keySource].label}
+                </button>
+              )}
+            </p>
+          ) : (
+            <div className="sh-field">
+              <div className="sh-field-head">
+                <label htmlFor={`${bodyId}-key`}>API key</label>
+                <a className="sh-quiet-link" href={preset.keyUrl} target="_blank" rel="noreferrer">
+                  Get a key ↗
+                </a>
+              </div>
+              <div className="sh-input-group">
+                <input
+                  id={`${bodyId}-key`}
+                  className="sh-input"
+                  type={showKey ? 'text' : 'password'}
+                  placeholder={`Paste your ${preset.label} key`}
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={cfg.apiKey}
+                  disabled={disabled}
+                  onChange={(e) => props.onPatch({ apiKey: e.target.value })}
+                  onBlur={props.onFieldBlur}
+                />
+                <button
+                  type="button"
+                  className="sh-btn-ghost"
+                  onClick={() => setShowKey((v) => !v)}
+                  aria-pressed={showKey}
+                >
+                  {showKey ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="sh-field">
+            <div className="sh-field-head">
+              <label htmlFor={`${bodyId}-model`}>Model</label>
+              <span className="sh-small sh-muted">optional</span>
+            </div>
             <input
+              id={`${bodyId}-model`}
               className="sh-input"
-              type={showKey ? 'text' : 'password'}
-              placeholder="API key"
-              autoComplete="off"
+              placeholder={preset.defaultModel}
               spellCheck={false}
-              value={cfg.apiKey}
+              value={cfg.model}
               disabled={disabled}
-              onChange={(e) => onPatch({ apiKey: e.target.value })}
-              aria-label={`${preset.label} API key`}
+              onChange={(e) => props.onPatch({ model: e.target.value })}
+              onBlur={props.onFieldBlur}
             />
-            <button className="sh-btn" onClick={() => setShowKey((v) => !v)}>
-              {showKey ? 'Hide' : 'Show'}
-            </button>
           </div>
-          <a className="sh-small" href={preset.keyUrl} target="_blank" rel="noreferrer">
-            Get a {preset.label} key ↗
-          </a>
+
+          <div className="sh-row">
+            <button
+              type="button"
+              className="sh-btn"
+              disabled={disabled || !key || status.kind === 'busy'}
+              onClick={props.onTest}
+            >
+              {status.kind === 'busy' ? 'Testing…' : readiness === 'no-access' ? 'Allow access & test' : 'Test'}
+            </button>
+            <StatusText status={status} />
+          </div>
         </div>
       )}
-
-      <div className="sh-row" style={{ flexWrap: 'nowrap' }}>
-        <input
-          className="sh-input"
-          placeholder={preset.defaultModel}
-          spellCheck={false}
-          value={cfg.model}
-          disabled={disabled}
-          onChange={(e) => onPatch({ model: e.target.value })}
-          aria-label={`${preset.label} model`}
-        />
-        <button className="sh-btn" disabled={disabled || !key || status.kind === 'busy'} onClick={onTest}>
-          {status.kind === 'busy' ? 'Testing…' : 'Test'}
-        </button>
-      </div>
-      <StatusText status={status} />
     </li>
+  )
+}
+
+const READINESS_TEXT: Record<Readiness, string> = {
+  ready: 'Active',
+  'no-key': 'Key missing',
+  'no-access': 'Needs access',
+  off: 'Off',
+}
+
+function ReadinessText({ readiness, keySource }: { readiness: Readiness; keySource: string | null }) {
+  const text = readiness === 'no-key' && keySource ? `Needs ${keySource} key` : READINESS_TEXT[readiness]
+  return <span className={`sh-readiness sh-readiness-${readiness}`}>{text}</span>
+}
+
+/** Quiet by design: nothing while idle, a short "Saved" after a write. */
+function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
+  if (state === 'idle') return null
+  if (state === 'error')
+    return (
+      <span className="sh-save sh-status-err" role="alert">
+        Not saved ·{' '}
+        <button type="button" className="sh-btn-link" onClick={onRetry}>
+          Retry
+        </button>
+      </span>
+    )
+  return (
+    <span className="sh-save" role="status">
+      {state === 'saving' ? 'Saving…' : 'Saved'}
+    </span>
   )
 }
 

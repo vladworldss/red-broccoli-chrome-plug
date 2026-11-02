@@ -4,6 +4,27 @@ All notable changes to RedBroccoli (called StudHelper up to 0.3.0) are
 documented here. Versions follow the `version` field in
 [package.json](package.json), which the Settings page shows at the bottom.
 
+## [0.6.0] — 2026-10-30
+
+### Settings save themselves
+
+- **No more Save button.** Everything you change in Settings is saved as you
+  type, so a key you paste is kept even if you close the tab right away. A
+  short "Saving…" / "Saved" appears next to what you changed, and "Not
+  saved · Retry" if Chrome couldn't store it.
+- **One status per provider:** Active, Key missing, Needs access or Off.
+- **Test asks for access.** Groq, Mistral, OpenRouter and DeepSeek need
+  your permission before RedBroccoli can reach them. A provider that still
+  needs it shows "Needs access", and its button reads "Allow access & test".
+- **A shorter page.** Providers are folded to one line each. Open one to
+  paste its key, pick a model or test it. Ticking a provider opens it. On
+  your first visit, Gemini is already open.
+- **Gemini, Groq and Mistral come first** for new installs: the free
+  providers most people set up. If you have saved settings before, your
+  order stays as it was.
+- Shorter provider descriptions and a calmer layout, with the key's
+  Show/Hide inside the field.
+
 ## [0.5.0] — 2026-10-20
 
 ### Lecture notes in plain words, with links for self-study
